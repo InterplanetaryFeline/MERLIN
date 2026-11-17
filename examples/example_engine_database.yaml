@@ -1,0 +1,195 @@
+# Default design: two-stage serial expendable LOX/RP-1 vehicle, 10 t payload to 400 km / 28.5 deg LEO.
+# SOFTWARE DEMONSTRATION ONLY - not a claim that a real vehicle can achieve this mission.
+# Leaf format: {v: value, u: units, d: description, s: source/justification, t: user|reference|assumed}
+meta: {name: "EXAMPLE-TSTO-LOX-RP1-10t-LEO", description: "Default two-stage kerolox demonstration"}
+
+mission:
+  payload_mass_kg: {v: 10000.0, u: kg, d: "Payload mass delivered to the injection orbit (excludes adapter and fairing)", s: "User requirement; matches size of book Example 1 (p.480) for comparison", t: user}
+  payload_adapter_mass_kg: {v: null, u: kg, d: "Payload adapter / PAF mass; null = use MER 0.0755 m_PL + 50", s: "Book Table 8.8 row 4 (p.495) when null", t: reference}
+  payload_envelope_diameter_m: {v: 2.7, u: m, d: "Payload static envelope diameter", s: "User requirement (assumed)", t: assumed}
+  payload_envelope_length_m: {v: 3.0, u: m, d: "Payload static envelope cylindrical length", s: "User requirement (assumed)", t: assumed}
+  delta_v_override_mps: {v: null, u: m/s, d: "If non-null, replaces the whole budget total (testing / design studies only)", s: "User override", t: user}
+  report_apogee_maneuver: {v: false, u: "-", d: "Report GTO->GEO apogee maneuver as informational line", s: "Option", t: user}
+  orbit:
+    type: {v: LEO, u: "-", d: "LEO | SSO | GTO | GEO_VIA_GTO | GEO_DIRECT | CUSTOM", s: "User requirement", t: user}
+    perigee_altitude_km: {v: 400.0, u: km, d: "Injection (perigee) altitude", s: "User requirement", t: user}
+    apogee_altitude_km: {v: null, u: km, d: "Apogee altitude (null for circular orbits)", s: "User requirement", t: user}
+    eccentricity: {v: null, u: "-", d: "Eccentricity (alternative to apogee altitude)", s: "User requirement", t: user}
+    inclination_deg: {v: 28.5, u: deg, d: "Orbital inclination (ignored for SSO: computed)", s: "User requirement", t: user}
+  launch_site:
+    site: {v: null, u: "-", d: "Launch site from config/launch_sites.yaml; fills latitude and longitude. null = Custom, type the coordinates below", s: "User choice; the coordinates it fills are registered against the library's own source", t: user}
+    latitude_deg: {v: 28.5, u: deg, d: "Launch site geodetic latitude (spherical Earth assumed)", s: "User (KSC-like latitude, book Example 3.9 p.185)", t: user}
+    longitude_deg: {v: null, u: deg, d: "Launch site longitude, east positive; used only to place impact points on a map. null = unknown, which gives drop-zone distances but no coordinates", s: "Not stated; type one to place drop zones on a map", t: user}
+    altitude_m: {v: 0.0, u: m, d: "Launch site altitude (recorded; not used in v1 performance model)", s: "User", t: user}
+    azimuth_deg: {v: null, u: deg, d: "Launch azimuth from North; null = computed from inclination (sin b = cos i / cos lat)", s: "Computed when null", t: assumed}
+    include_earth_rotation: {v: true, u: "-", d: "Credit Earth rotation (justified for a direct eastward-type ascent from a fixed site)", s: "Book Example 3.9 (p.185) method", t: reference}
+  losses:
+    model: {v: book_penalty, u: "-", d: "Ascent-loss model: book_penalty (Book Eq. 3:36-3:38 regression, lumped gravity+drag+steering+propulsion) | user (explicit values below)", s: "Book pp.181-182 (RMS error ~260 m/s for LEO)", t: reference}
+    staging_delay_s: {v: 3.0, u: s, d: "Ignition/staging delay added to ascent time per stage separation (book: delays 'should be considered')", s: "Assumed; book p.181 says delays should be considered", t: assumed}
+    gravity_mps: {v: 1200.0, u: m/s, d: "Gravity-loss estimate (used only when model = user)", s: "Assumed; Table 3.4 range 1,150-1,534 m/s (p.180)", t: assumed}
+    drag_mps: {v: 100.0, u: m/s, d: "Drag-loss estimate (model = user only)", s: "Assumed; Table 3.4 range 40-156 m/s (p.180)", t: assumed}
+    steering_mps: {v: 150.0, u: m/s, d: "Steering-loss estimate (model = user only)", s: "Assumed; Table 3.4 range 33-358 m/s (p.180)", t: assumed}
+    other_allowance_mps: {v: 0.0, u: m/s, d: "Other explicit allowances on top of the loss model", s: "None assumed (avoid double counting with margin)", t: assumed}
+    ascent_time_override_s: {v: 300.0, u: s, d: "Powered ascent time charged to the loss regression. The real RL10 upper stage burns for about 1,600 s at 0.2 T/W, most of it already near orbital speed; charging all of it to a regression fitted to the ascent would inflate the losses badly", s: "Modelling decision; the tool warns (ASCTIME) whenever this override is used", t: assumed}
+    design_margin_fraction: {v: 0.0, u: "-", d: "Delta-v design margin as fraction of subtotal (applied once). Book regression RMS error is ~260 m/s (~3 %): consider 0.03", s: "Set to 0 so the book regression is reported unmodified; user may add margin", t: assumed}
+
+fairing:
+  diameter_m: {v: 3.0, u: m, d: "Fairing outer diameter (must equal upper-stage diameter in v1)", s: "User", t: user}
+  nose_length_over_D: {v: 1.0, u: "-", d: "Conical nose length / diameter", s: "Assumed; book Fig. 8.10 sizes the PLF at about 2 D total (p.479)", t: assumed}
+  axial_clearance_m: {v: 0.2, u: m, d: "Axial clearance added to payload envelope length", s: "Assumed", t: assumed}
+  radial_clearance_m: {v: 0.1, u: m, d: "Radial clearance between envelope and fairing", s: "Assumed", t: assumed}
+  material: {v: metal, u: "-", d: "metal | composite (selects areal mass MER)", s: "Book Table 8.8 rows 1-2 (p.495)", t: reference}
+  jettison_at_stage_start: {v: 2, u: "-", d: "Fairing is jettisoned at the START of this stage's burn", s: "Assumed; book Example 2 notes jettison shortly after stage-2 start (p.506)", t: assumed}
+  mass_override_kg: {v: null, u: kg, d: "Override fairing mass (null = MER x area)", s: "User", t: user}
+
+vehicle:
+  paf_length_over_D: {v: 0.25, u: "-", d: "Payload attach fitting height / upper-stage diameter", s: "Book Table 8.11 label 'PAF, h = D/4' (p.506)", t: reference}
+  payload_adapter_method: {v: mer, u: "-", d: "PAF mass model: mer | fraction | auto", s: "Book Table 8.8 row 4; errata p.443 suggests 0.15 m_PL for small payloads", t: reference}
+  dv_allocation_mode: {v: fractions, u: "-", d: "fractions | fixed", s: "User", t: user}
+  optimise_dv_split: {v: true, u: "-", d: "Replace the delta-v split below with the optimum before sizing, so the vehicle reported is the vehicle optimised. Off means the split is yours and is used as written", s: "User", t: user}
+  optimise_objective: {v: glom, u: "-", d: "What to optimise towards when optimise_dv_split is on: glom (lightest vehicle) | cost (lowest development cost) | payload (most payload at the same lift-off mass)", s: "User", t: user}
+  dv_fractions: {v: [0.44, 0.56], u: "-", d: "Share of total delta-v per stage (normalised)", s: "Assumed; book Example 1 staging gives 3,757/8,599 = 0.44 (p.480)", t: assumed}
+  dv_fixed_mps: {v: null, u: m/s, d: "Fixed per-stage delta-v (last may be null = remainder)", s: "User", t: user}
+
+constraints:
+  max_vehicle_length_m: {v: 70.0, u: m, d: "Maximum allowed overall length", s: "User", t: user}
+  min_tw_liftoff: {v: 1.15, u: "-", d: "Minimum liftoff thrust/weight (sea-level thrust)", s: "Assumed engineering floor (T/W must exceed 1; book p.227)", t: assumed}
+  max_accel_g: {v: 6.0, u: g, d: "Maximum axial acceleration at burnout (vacuum thrust)", s: "Assumed payload-environment limit", t: assumed}
+  min_tw_upper: {v: 0.4, u: "-", d: "Warn if upper-stage ignition T/W is below this", s: "Assumed (book Example 1 uses 0.7 on stage 2, p.482)", t: assumed}
+
+stages:
+  - name: {v: "Stage 1", u: "-", d: "Stage label", s: "User", t: user}
+    fuel: {v: RP-1, u: "-", d: "Fuel (key into propellant library)", s: "User", t: user}
+    oxidizer: {v: LOX, u: "-", d: "Oxidizer (key into propellant library)", s: "User", t: user}
+    mixture_ratio_OF: {v: 2.5, u: "-", d: "O/F = m_ox / m_fuel (book's f = m_fuel/m_ox = 1/OF)", s: "Assumed; book Table 8.12 uses 2.47 for LOx/RP-1 (p.508)", t: assumed}
+    residual_fraction: {v: 0.02, u: "-", d: "Residual propellant fraction of mission propellant (stays on board at burnout)", s: "Book Table 8.3 (p.482)", t: reference}
+    loading_margin_fraction: {v: 0.005, u: "-", d: "Extra propellant loaded beyond mission need (unburned at burnout; conservative)", s: "Assumed", t: assumed}
+    startup_time_s: {v: 1.0, u: s, d: "Engine start-up time at full mass flow (propellant consumed, no delta-v credit)", s: "Book Table 8.3 (p.482)", t: reference}
+    diameter_m: {v: 4.0, u: m, d: "Stage external diameter", s: "Book Example 1 uses 4 m / 3 m (p.484)", t: reference}
+    structure_mode: {v: bottom_up, u: "-", d: "bottom_up (component MERs) | aggregate_s (structural factor)", s: "User", t: user}
+    structural_factor_s: {v: null, u: "-", d: "Book-convention s = m_inert/(m_inert + m_p) for aggregate_s mode", s: "Book Eq. 5:5a", t: reference}
+    feed_system_mass_per_engine_kg: {v: 25.0, u: kg, d: "Feed lines/valves not in engine MER, per engine", s: "Assumed", t: assumed}
+    pressurant_mass_fraction_of_propellant: {v: 0.002, u: "-", d: "Pressurant + bottles as fraction of loaded propellant", s: "Assumed", t: assumed}
+    separation_hardware_mass_kg: {v: 60.0, u: kg, d: "Stage separation hardware (jettisoned with this stage)", s: "Assumed", t: assumed}
+    other_equipment_mass_kg: {v: 100.0, u: kg, d: "Other equipment (power, harness extras, TPS) lumped", s: "Assumed", t: assumed}
+    structure_mass_factor: {v: 1.0, u: "-", d: "Multiplier on tank-structure and unpressurised-structure MERs (1 = metallic as in the book MERs; book p.498 suggests ~0.8 for composites)", s: "Book p.498 (composite credit ~20 %); 1.0 = no credit", t: reference}
+    inert_mass_margin_fraction: {v: 0.10, u: "-", d: "Mass-growth margin on summed dry components (single margin, applied once)", s: "Assumed (book Example 2 reports 22-25% positive margin, p.506)", t: assumed}
+    avionics_mass_override_kg: {v: null, u: "kg", d: "Avionics mass for this stage, overriding the Table 8.8 step relationship. null = use the relationship", s: "User", t: user}
+    max_length_m: {v: null, u: "m", d: "Maximum length allowed for this stage; the design is refused if it exceeds this. null = no limit", s: "User", t: user}
+    layout:
+      aft_skirt_over_D: {v: 0.5, u: "-", d: "Aft skirt length / D (floored by embedded engine length)", s: "Assumed", t: assumed}
+      intertank_over_D: {v: 0.25, u: "-", d: "Intertank length / D (separate-tank layout)", s: "Assumed", t: assumed}
+      fwd_skirt_over_D: {v: 0.25, u: "-", d: "Forward skirt length / D", s: "Assumed", t: assumed}
+      interstage_min_length_m: {v: 0.5, u: m, d: "Minimum interstage length", s: "Assumed", t: assumed}
+      interstage_clearance_m: {v: 0.3, u: m, d: "Axial clearance between upper-stage nozzle and lower-stage forward end", s: "Assumed", t: assumed}
+      interstage_half_angle_deg: {v: 15.0, u: deg, d: "Maximum cone half-angle for diameter transitions", s: "Assumed", t: assumed}
+    tank:
+      diameter_m: {v: null, u: "m", d: "Tank external diameter; null = fill the stage diameter. Lower it when the end caps alone would hold more than the tank needs - a stage whose tanks do not fill its envelope is normal", s: "User", t: user}
+      user_mass_fuel_kg: {v: null, u: "kg", d: "Fuel tank mass you supply; used only when the fuel tank mass method is user_mass", s: "User", t: user}
+      user_mass_oxidizer_kg: {v: null, u: "kg", d: "Oxidiser tank mass you supply; used only when the oxidiser tank mass method is user_mass", s: "User", t: user}
+      material: {v: Al-2219, u: "-", d: "Key into tank_materials", s: "User", t: user}
+      arrangement: {v: separate, u: "-", d: "separate | common_bulkhead", s: "User", t: user}
+      order_bottom_to_top: {v: [fuel, oxidizer], u: "-", d: "Tank order from the engine end upward", s: "User", t: user}
+      dome_aspect_ratio: {v: 1.41421356, u: "-", d: "AR = R/h_dome (1 = hemisphere, sqrt2 = 2:1 ellipsoidal)", s: "Book p.476 and Example 1 (p.484)", t: reference}
+      ullage_fuel: {v: 0.03, u: "-", d: "Ullage volume fraction (fuel tank)", s: "Book Example 1 (p.483)", t: reference}
+      ullage_oxidizer: {v: 0.03, u: "-", d: "Ullage volume fraction (oxidizer tank)", s: "Book Example 1 (p.483)", t: reference}
+      mass_method_fuel: {v: akin_propellant_mass, u: "-", d: "akin_propellant_mass | akin_volume | pressure_vessel | mass_fraction | user_mass", s: "Book Table 8.6 (preferred when applicable)", t: reference}
+      mass_method_oxidizer: {v: akin_propellant_mass, u: "-", d: "Tank mass method (oxidizer)", s: "Book Table 8.6", t: reference}
+      wall_thickness_assumed_m: {v: 0.004, u: m, d: "Wall thickness used for internal/external geometry when mass method is not pressure_vessel", s: "Assumed", t: assumed}
+      pressure_fuel_Pa: {v: 300000.0, u: Pa, d: "Fuel tank operating pressure (used only by pressure_vessel mass method)", s: "Assumed", t: assumed}
+      pressure_oxidizer_Pa: {v: 300000.0, u: Pa, d: "Oxidizer tank operating pressure (pressure_vessel method only)", s: "Assumed", t: assumed}
+      mass_fraction_fuel: {v: 0.015, u: "kg/kg", d: "Tank mass / propellant mass for mass_fraction method (fuel)", s: "Assumed (cf. Table 8.6 RP-1 0.0148)", t: assumed}
+      mass_fraction_oxidizer: {v: 0.011, u: "kg/kg", d: "Tank mass / propellant mass for mass_fraction method (oxidizer)", s: "Assumed (cf. Table 8.6 LOX 0.0107)", t: assumed}
+      load_temperature_K: {v: 293.0, u: K, d: "Tank temperature at loading (cryogenic shrinkage dT)", s: "Book Table 8.1 'Room Temp.' (p.473)", t: reference}
+      insulated_fuel: {v: false, u: "-", d: "External insulation on fuel tank", s: "Book Table 8.6 (none for RP-1)", t: reference}
+      insulated_oxidizer: {v: true, u: "-", d: "External insulation on oxidizer tank", s: "Book Table 8.6 LOX insulation row", t: reference}
+    engine:
+      geometry_method: {v: user, u: "-", d: "How the engine envelope is sized - user (you give length and exit diameter) or book_mer (Eqs. 8:28/8:30, which needs a chamber pressure and c*)", s: "Book Sec. 8.7.7", t: reference}
+      name: {v: null, u: "-", d: "Label; filled from the engine database", s: "engine database", t: reference}
+      from_database: {v: "RD-180", u: "-", d: "Real engine: fills thrust, Isp, Pc, area ratio, mass and cycle from config/engine_database.yaml", s: "Public figures, see the database row", t: reference}
+      n_engines: {v: 1, u: "-", d: "One RD-180 (two chambers on one turbopump, modelled as one engine)", s: "Wikipedia Atlas V CCB", t: reference}
+      thrust_to_weight_ignition: {v: null, u: "-", d: "Not used: the real engine supplies a fixed thrust", s: "n/a", t: user}
+      thrust_vac_per_engine_N: {v: null, u: N, d: "Fixed-thrust mode: vacuum thrust per engine (null = use T/W)", s: "User", t: user}
+      isp_vac_s: {v: null, u: "s", d: "Vacuum Isp; filled from the engine database", s: "engine database", t: reference}
+      isp_sl_s: {v: null, u: "s", d: "Sea-level Isp; filled from the engine database", s: "engine database", t: reference}
+      isp_effective_mode: {v: weighted, u: "-", d: "Isp used in rocket equation: vacuum | weighted | user (explicit assumption)", s: "Book Eq. 4:18 weighting (p.225)", t: reference}
+      isp_sl_weight: {v: 0.3333333333, u: "-", d: "Weight on sea-level Isp when mode = weighted", s: "Book Eq. 4:18 (1/3 SL + 2/3 vac)", t: reference}
+      isp_effective_user_s: {v: null, u: s, d: "Explicit effective Isp when mode = user", s: "User", t: user}
+      expansion_ratio: {v: null, u: "-", d: "Nozzle area ratio; filled from the engine database", s: "engine database", t: reference}
+      chamber_pressure_Pa: {v: null, u: "Pa", d: "Chamber pressure; filled from the engine database", s: "engine database", t: reference}
+      length_m: {v: 2.8, u: m, d: "Engine overall length (chamber + nozzle)", s: "Assumed placeholder", t: assumed}
+      exit_diameter_m: {v: 1.2, u: m, d: "Nozzle exit diameter", s: "Assumed placeholder", t: assumed}
+      embed_fraction: {v: 0.6, u: "-", d: "Fraction of engine length inside the aft skirt (rest protrudes)", s: "Assumed", t: assumed}
+      mass_method: {v: user, u: "-", d: "Use the real engine mass from the database instead of the Table 8.9 MER", s: "engine database", t: reference}
+      mass_user_per_engine_kg: {v: null, u: kg, d: "Engine dry mass; filled from the engine database", s: "engine database", t: reference}
+      gimbal_method: {v: mer, u: "-", d: "mer | user | none", s: "Book Table 8.9 row 2", t: reference}
+      gimbal_user_per_engine_kg: {v: null, u: kg, d: "Gimbal mass when gimbal_method = user", s: "User", t: user}
+      throttle_min_fraction: {v: 1.0, u: "-", d: "Minimum throttle (informational in v1: constant thrust modelled)", s: "User", t: user}
+
+  - name: {v: "Stage 2", u: "-", d: "Stage label", s: "User", t: user}
+    fuel: {v: RP-1, u: "-", d: "Fuel", s: "User", t: user}
+    oxidizer: {v: LOX, u: "-", d: "Oxidizer", s: "User", t: user}
+    mixture_ratio_OF: {v: 2.5, u: "-", d: "O/F = m_ox / m_fuel", s: "Assumed", t: assumed}
+    residual_fraction: {v: 0.02, u: "-", d: "Residual propellant fraction", s: "Book Table 8.3 (p.482)", t: reference}
+    loading_margin_fraction: {v: 0.005, u: "-", d: "Loading margin (unburned)", s: "Assumed", t: assumed}
+    startup_time_s: {v: 1.0, u: s, d: "Engine start-up time", s: "Book Table 8.3 (p.482)", t: reference}
+    diameter_m: {v: 3.0, u: m, d: "Stage external diameter", s: "Book Example 1 (p.484)", t: reference}
+    structure_mode: {v: bottom_up, u: "-", d: "bottom_up | aggregate_s", s: "User", t: user}
+    structural_factor_s: {v: null, u: "-", d: "Book-convention s for aggregate_s mode", s: "Book Eq. 5:5a", t: reference}
+    feed_system_mass_per_engine_kg: {v: 25.0, u: kg, d: "Feed lines per engine", s: "Assumed", t: assumed}
+    pressurant_mass_fraction_of_propellant: {v: 0.002, u: "-", d: "Pressurant fraction", s: "Assumed", t: assumed}
+    separation_hardware_mass_kg: {v: 0.0, u: kg, d: "Separation hardware (payload separation assumed carried by adapter)", s: "Assumed", t: assumed}
+    other_equipment_mass_kg: {v: 60.0, u: kg, d: "Other equipment lumped", s: "Assumed", t: assumed}
+    structure_mass_factor: {v: 1.0, u: "-", d: "Multiplier on tank-structure and unpressurised-structure MERs (1 = metallic as in the book MERs; book p.498 suggests ~0.8 for composites)", s: "Book p.498 (composite credit ~20 %); 1.0 = no credit", t: reference}
+    inert_mass_margin_fraction: {v: 0.10, u: "-", d: "Mass-growth margin on summed dry components", s: "Assumed", t: assumed}
+    avionics_mass_override_kg: {v: null, u: "kg", d: "Avionics mass for this stage, overriding the Table 8.8 step relationship. null = use the relationship", s: "User", t: user}
+    max_length_m: {v: null, u: "m", d: "Maximum length allowed for this stage; the design is refused if it exceeds this. null = no limit", s: "User", t: user}
+    layout:
+      aft_skirt_over_D: {v: 0.5, u: "-", d: "Aft skirt length / D", s: "Assumed", t: assumed}
+      intertank_over_D: {v: 0.25, u: "-", d: "Intertank length / D", s: "Assumed", t: assumed}
+      fwd_skirt_over_D: {v: 0.25, u: "-", d: "Forward skirt length / D", s: "Assumed", t: assumed}
+      interstage_min_length_m: {v: 0.0, u: m, d: "Not used for the last stage", s: "n/a", t: assumed}
+      interstage_clearance_m: {v: 0.3, u: m, d: "Not used for the last stage", s: "n/a", t: assumed}
+      interstage_half_angle_deg: {v: 15.0, u: deg, d: "Not used for the last stage", s: "n/a", t: assumed}
+    tank:
+      diameter_m: {v: null, u: "m", d: "Tank external diameter; null = fill the stage diameter. Lower it when the end caps alone would hold more than the tank needs - a stage whose tanks do not fill its envelope is normal", s: "User", t: user}
+      user_mass_fuel_kg: {v: null, u: "kg", d: "Fuel tank mass you supply; used only when the fuel tank mass method is user_mass", s: "User", t: user}
+      user_mass_oxidizer_kg: {v: null, u: "kg", d: "Oxidiser tank mass you supply; used only when the oxidiser tank mass method is user_mass", s: "User", t: user}
+      material: {v: Al-2219, u: "-", d: "Tank material key", s: "User", t: user}
+      arrangement: {v: separate, u: "-", d: "separate | common_bulkhead", s: "User", t: user}
+      order_bottom_to_top: {v: [fuel, oxidizer], u: "-", d: "Tank order from engine end upward", s: "User", t: user}
+      dome_aspect_ratio: {v: 1.41421356, u: "-", d: "Dome AR", s: "Book p.476/p.484", t: reference}
+      ullage_fuel: {v: 0.03, u: "-", d: "Ullage fraction (fuel)", s: "Book p.483", t: reference}
+      ullage_oxidizer: {v: 0.03, u: "-", d: "Ullage fraction (oxidizer)", s: "Book p.483", t: reference}
+      mass_method_fuel: {v: akin_propellant_mass, u: "-", d: "Tank mass method (fuel)", s: "Book Table 8.6", t: reference}
+      mass_method_oxidizer: {v: akin_propellant_mass, u: "-", d: "Tank mass method (oxidizer)", s: "Book Table 8.6", t: reference}
+      wall_thickness_assumed_m: {v: 0.003, u: m, d: "Assumed wall thickness for geometry", s: "Assumed", t: assumed}
+      pressure_fuel_Pa: {v: 300000.0, u: Pa, d: "Fuel tank operating pressure (used only by pressure_vessel mass method)", s: "Assumed", t: assumed}
+      pressure_oxidizer_Pa: {v: 300000.0, u: Pa, d: "Oxidizer tank operating pressure (pressure_vessel method only)", s: "Assumed", t: assumed}
+      mass_fraction_fuel: {v: 0.015, u: "kg/kg", d: "Tank mass / propellant mass for mass_fraction method (fuel)", s: "Assumed (cf. Table 8.6 RP-1 0.0148)", t: assumed}
+      mass_fraction_oxidizer: {v: 0.011, u: "kg/kg", d: "Tank mass / propellant mass for mass_fraction method (oxidizer)", s: "Assumed (cf. Table 8.6 LOX 0.0107)", t: assumed}
+      load_temperature_K: {v: 293.0, u: K, d: "Loading temperature", s: "Book Table 8.1", t: reference}
+      insulated_fuel: {v: false, u: "-", d: "Fuel tank insulation", s: "Book Table 8.6", t: reference}
+      insulated_oxidizer: {v: true, u: "-", d: "Oxidizer tank insulation", s: "Book Table 8.6", t: reference}
+    engine:
+      geometry_method: {v: user, u: "-", d: "How the engine envelope is sized - user (you give length and exit diameter) or book_mer (Eqs. 8:28/8:30, which needs a chamber pressure and c*)", s: "Book Sec. 8.7.7", t: reference}
+      name: {v: null, u: "-", d: "Label; filled from the engine database", s: "engine database", t: reference}
+      from_database: {v: "RL10C-1", u: "-", d: "Real engine: fills thrust, Isp, Pc, area ratio, mass and cycle", s: "Public figures, see the database row", t: reference}
+      n_engines: {v: 1, u: "-", d: "Number of engines", s: "Book Example 2 (p.504)", t: reference}
+      thrust_to_weight_ignition: {v: null, u: "-", d: "Not used: the real engine supplies a fixed thrust", s: "n/a", t: user}
+      thrust_vac_per_engine_N: {v: null, u: N, d: "Fixed thrust mode (null = T/W)", s: "User", t: user}
+      isp_vac_s: {v: null, u: "s", d: "Vacuum Isp; filled from the engine database", s: "engine database", t: reference}
+      isp_sl_s: {v: null, u: s, d: "Sea-level Isp (not applicable)", s: "n/a", t: assumed}
+      isp_effective_mode: {v: vacuum, u: "-", d: "Stage fires in vacuum: vacuum Isp is the explicit assumption", s: "Modelling assumption", t: assumed}
+      isp_sl_weight: {v: 0.3333333333, u: "-", d: "Unused", s: "n/a", t: assumed}
+      isp_effective_user_s: {v: null, u: s, d: "Unused", s: "n/a", t: assumed}
+      expansion_ratio: {v: null, u: "-", d: "Nozzle area ratio; filled from the engine database", s: "engine database", t: reference}
+      chamber_pressure_Pa: {v: null, u: "Pa", d: "Chamber pressure; filled from the engine database", s: "engine database", t: reference}
+      length_m: {v: null, u: "m", d: "Engine length; filled from the engine database", s: "engine database", t: reference}
+      exit_diameter_m: {v: null, u: "m", d: "Nozzle exit diameter; filled from the engine database", s: "engine database", t: reference}
+      embed_fraction: {v: 0.5, u: "-", d: "Fraction inside the aft skirt", s: "Assumed", t: assumed}
+      mass_method: {v: user, u: "-", d: "Use the real engine mass from the database", s: "engine database", t: reference}
+      mass_user_per_engine_kg: {v: null, u: kg, d: "Engine dry mass; filled from the engine database", s: "engine database", t: reference}
+      gimbal_method: {v: none, u: "-", d: "The RL10C-1 database row has no chamber pressure, so the Table 8.9 gimbal MER cannot be evaluated; the tool refuses to invent one", s: "engine database: field absent in the cited source", t: reference}
+      gimbal_user_per_engine_kg: {v: null, u: kg, d: "User gimbal mass", s: "User", t: user}
+      throttle_min_fraction: {v: 1.0, u: "-", d: "Informational", s: "User", t: user}

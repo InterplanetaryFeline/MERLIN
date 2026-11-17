@@ -1,0 +1,52 @@
+# Launch vehicle FAMILY manifest. See src/launch_vehicle/families.py for the format.
+# Every variant loads the same base design and overrides only what makes it that variant.
+family:
+  name: Ariane 6
+  note: >-
+    The A62 and A64 share the LLPM core and the Vinci ULPM exactly; only the P120C count and the payload
+    differ, and every booster is lit on the pad in both. The two shipped design files validation/ariane62.yaml
+    and validation/ariane64.yaml differ in nothing else either - diffing them turns up the payload, the two
+    booster counts and some wording, and no engineering input at all. This manifest is what makes that shared
+    core structural rather than two near-identical files free to drift apart. Pinning one variant's core and
+    asking it for the other's booster count is the measurement in docs/ACCURACY.md 6b.5.
+  base: ../../ariane64.yaml
+  reference: "64"
+  variants:
+    "62":
+      label: Ariane 62 (2 x P120C)
+      overrides:
+        boosters.n_total: 2
+        boosters.n_ground_lit: 2
+        mission.payload_mass_kg: 7200.0
+      published:
+        payload_kg:
+          v: 7200.0
+          u: kg
+          d: "Published payload to a 500 km Sun-synchronous orbit"
+          s: "Wikipedia 'Ariane 6' infobox, Ariane 62 variant: 530,000 kg lift-off, 2 stages + 2 P120C boosters; 7,200 kg to SSO at 97.4 deg. Same source and same leaf as validation/ariane62.yaml's own payload input"
+          t: reference
+        glom_kg:
+          v: 530000.0
+          u: kg
+          d: "Published lift-off mass"
+          s: "Wikipedia 'Ariane 6' infobox, Ariane 62 variant: 530,000 kg lift-off, 2 stages + 2 P120C boosters; 7,200 kg to SSO at 97.4 deg. Same source and same leaf as validation/ariane62.yaml's own payload input"
+          t: reference
+    "64":
+      label: Ariane 64 (4 x P120C)
+      overrides:
+        boosters.n_total: 4
+        boosters.n_ground_lit: 4
+        mission.payload_mass_kg: 15500.0
+      published:
+        payload_kg:
+          v: 15500.0
+          u: kg
+          d: "Published payload to a 500 km Sun-synchronous orbit"
+          s: "Wikipedia 'Ariane 6' infobox, Ariane 64 variant: 860,000 kg lift-off; 15,500 kg to SSO. Core and upper stage identical to the Ariane 62; four P120C boosters instead of two. Same source and same leaf as validation/ariane64.yaml's own payload input"
+          t: reference
+        glom_kg:
+          v: 860000.0
+          u: kg
+          d: "Published lift-off mass"
+          s: "Wikipedia 'Ariane 6' infobox, Ariane 64 variant: 860,000 kg lift-off; 15,500 kg to SSO. Core and upper stage identical to the Ariane 62; four P120C boosters instead of two. Same source and same leaf as validation/ariane64.yaml's own payload input"
+          t: reference

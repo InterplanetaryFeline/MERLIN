@@ -1,0 +1,26 @@
+# A declared trade study (roadmap R17).
+#
+#   python -m launch_vehicle.main trade --study examples/example_trade_study.yaml --out outputs/trade
+#
+# Every case is a full sizing run: same relationships, same assumptions, same warnings as a single-design
+# report. Cases that fail to converge or violate a constraint stay in the results table rather than being
+# dropped, because a sweep that hides its failures looks better than it is.
+trade_study:
+  name: Stage 1 diameter and mixture ratio
+  design: config/default_design.yaml
+  assumptions: config/engineering_assumptions.yaml
+
+  # grid         - every combination of every value (4 x 3 = 12 cases here)
+  # one_at_a_time - the baseline, then each value of each parameter on its own
+  mode: grid
+
+  # Paths are dotted paths into the design file as written, the same ones the sensitivity studies use.
+  # An unknown path is refused rather than silently ignored.
+  sweep:
+    - path: stages.0.diameter_m
+      values: [3.6, 3.8, 4.0, 4.2]
+    - path: stages.0.mixture_ratio_OF
+      values: [2.3, 2.5, 2.7]
+
+  # Optional: which outputs to tabulate. Omit for the default set.
+  outputs: [glom_kg, dry_mass_kg, payload_fraction, length_m, dv_achieved_mps, liftoff_tw]

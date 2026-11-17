@@ -1,0 +1,902 @@
+# Engine and motor database
+#
+# Real propulsion hardware, so a design can stop being a "rubber engine". Reference a row from a stage with
+#
+#   engine:
+#     from_database: {v: "RD-180", u: "-", d: "Real engine; fills thrust, Isp, Pc, area ratio, mass and envelope",
+#                     s: "config/engine_database.yaml", t: reference}
+#
+# and every field you do NOT give explicitly in that stage is filled from the row below. Anything you do give wins,
+# so a database row is a default, never an override.
+#
+# PROVENANCE, read this before trusting a number.
+#   * Each row names its own source. Most rows are now the BOOK's own engine tables - Table 4.14 (p.245) for the
+#     eighteen-engine performance summary, Table 4.11 (p.241) for the F-1, Table 4.12 (p.242) for the J-2 and
+#     Table 4.13 (p.243) for the RS-68 - and are marked `confidence: published` accordingly. The rest are public
+#     manufacturer or encyclopaedia figures, or peer-reviewed papers for the peroxide engines, and are NOT
+#     verified by this tool's author beyond reading the cited page.
+#   * `confidence: published` means the source states the figure directly. `confidence: approximate` means it was
+#     derived, rounded, or the source is a secondary one - treat it as an engineering estimate.
+#   * Blank (null) fields are genuinely unknown and stay unknown: the tool keeps whatever the design file says and
+#     tells you which fields the database could not supply. Nothing here is invented to fill a gap.
+#   * Manufacturers publish different numbers at different times, and some figures (engine dry mass above all) are
+#     quoted with and without the thrust frame, gimbals or hydraulics. Expect a few per cent of scatter.
+#
+# All values SI. isp_sl_s is null for an engine that is only flown in vacuum.
+
+meta:
+  version: 1
+  retrieved: 2026-10-12
+  note: >-
+    Book engine tables (4.11-4.14) where the book has the engine, otherwise public manufacturer, encyclopaedia or
+    published-paper figures. Every row cites its own source. Where a source gives a range or several revisions,
+    the row states which one was taken.
+
+cycles:
+  # Power cycle: what it implies for chamber pressure and for the engine mass MER. The pressure bands are the
+  # usual flight range of each cycle, used only to flag a design that sits outside it - they are not limits.
+  pressure_fed:
+    chamber_pressure_bar: [5, 35]
+    isp_note: "Lowest performance; tank pressure sets chamber pressure, so tanks are heavy"
+    source: "Standard propulsion-system classification (book Sec. 4.7, pp.242-256). Upper bound raised from 30 to
+      35 bar by the flown Gamma-2 in this database, which runs at 31 bar"
+  electric_pump:
+    chamber_pressure_bar: [10, 60]
+    isp_note: "Pump power from batteries; battery mass grows with burn time"
+    source: "Rutherford is the flown example; book does not cover this cycle"
+  gas_generator:
+    chamber_pressure_bar: [30, 130]
+    isp_note: "Open cycle: a few per cent of flow bypasses the chamber, costing some Isp"
+    source: "Book Sec. 4.7 (pp.242-256). The lower bound is set by HM7B in this database, a flown gas-generator
+      engine at 37 bar; a band that flags its own data is miscalibrated, so 30 bar is used rather than 40"
+  staged_combustion:
+    chamber_pressure_bar: [100, 300]
+    isp_note: "Closed cycle: highest chamber pressure and Isp, highest complexity"
+    source: "Book Sec. 4.7 (pp.242-256). Lower bound set from this database rather than assumed: the book's own
+      Table 4.14 lists the staged-combustion RD-253 at 147 bar and RD-0210 at 147 bar, and the peroxide RD161P
+      runs at 118 bar, so a 150 bar floor would flag four real engines. A band that flags its own data is
+      miscalibrated"
+  expander:
+    chamber_pressure_bar: [20, 70]
+    isp_note: "Closed cycle limited by heat available from the nozzle; suits small hydrogen upper stages"
+    source: "Book Sec. 4.7 (pp.242-256)"
+  expander_bleed:
+    chamber_pressure_bar: [20, 110]
+    isp_note: "OPEN variant of the expander: the hydrogen heated in the chamber wall drives the turbine and is
+      then dumped overboard rather than returned to the chamber, which costs a little Isp but lifts the
+      chamber-pressure ceiling the closed expander runs into"
+    source: "Not a cycle the book covers - Sec. 4.7 names the closed expander only. The band is set from flown
+      Japanese examples rather than assumed: the LE-5B in this database runs at 35.8 bar and the LE-9 at about
+      100 bar, so the band brackets its own data in the same way the electric_pump band does"
+  solid:
+    chamber_pressure_bar: [30, 110]
+    isp_note: "Solid motor; chamber pressure follows the grain and the burn-rate law r = a Pc^n"
+    source: "Book Sec. 4.4 (pp.229-235)"
+
+engines:
+- name: Merlin 1D
+  kind: liquid
+  cycle: gas_generator
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.34
+  thrust_vac_N: 981000.0
+  thrust_sl_N: 845000.0
+  isp_vac_s: 311.0
+  isp_sl_s: 282.0
+  chamber_pressure_Pa: 9700000.0
+  expansion_ratio: 16.0
+  mass_kg: 470.0
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: 'Wikipedia ''SpaceX Merlin'' (read 2026-10-12): 845 kN SL / 981 kN vac, Isp 282/311 s, Pc 9.7 MPa, area ratio 16 (stated as a 2011 design goal), dry mass 470 kg incl. TVC actuators'
+- name: Merlin 1D Vacuum
+  kind: liquid
+  cycle: gas_generator
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.34
+  thrust_vac_N: 981000.0
+  thrust_sl_N: null
+  isp_vac_s: 348.0
+  isp_sl_s: null
+  chamber_pressure_Pa: 9700000.0
+  expansion_ratio: 165.0
+  mass_kg: null
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: 'Wikipedia ''SpaceX Merlin'' (read 2026-10-12): 981 kN vac, Isp 348 s, area ratio 165:1; the article gives no separate mass or chamber pressure for the vacuum variant, so those stay null'
+- name: RD-180
+  kind: liquid
+  cycle: staged_combustion
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.72
+  thrust_vac_N: 4150000.0
+  thrust_sl_N: 3830000.0
+  isp_vac_s: 338.0
+  isp_sl_s: 311.0
+  chamber_pressure_Pa: 26700000.0
+  expansion_ratio: 36.87
+  mass_kg: 5480.0
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: 'Wikipedia ''RD-180'' (read 2026-10-12): 3,830 kN SL / 4,150 kN vac, Isp 311/338 s, Pc 26.7 MPa, nozzle ratio 36.87, dry mass 5,480 kg, O/F 2.72'
+- name: RL10B-2
+  kind: liquid
+  cycle: expander
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 5.88
+  thrust_vac_N: 110100.0
+  thrust_sl_N: null
+  isp_vac_s: 465.5
+  isp_sl_s: null
+  chamber_pressure_Pa: null
+  expansion_ratio: 280.0
+  mass_kg: 301.0
+  length_m: 4.15
+  exit_diameter_m: 2.15
+  confidence: published
+  source: 'Wikipedia ''RL10'' (read 2026-10-12): 110.1 kN vac, Isp 465.5 s, area ratio 280:1, dry mass 301 kg, deployed length 4.15 m, exit diameter 2.15 m, O/F 5.88; chamber pressure not given by the source'
+- name: RL10C-1
+  kind: liquid
+  cycle: expander
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 5.5
+  thrust_vac_N: 101500.0
+  thrust_sl_N: null
+  isp_vac_s: 449.7
+  isp_sl_s: null
+  chamber_pressure_Pa: null
+  expansion_ratio: 130.0
+  mass_kg: 190.0
+  length_m: 2.18
+  exit_diameter_m: 1.45
+  confidence: published
+  source: 'Wikipedia ''RL10'' (read 2026-10-12): 101.5 kN vac, Isp 449.7 s, area ratio 130:1, dry mass 190 kg, length 2.18 m, exit diameter 1.45 m, O/F 5.5'
+- name: Vulcain 2
+  kind: liquid
+  cycle: gas_generator
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 6.1
+  thrust_vac_N: 1359000.0
+  thrust_sl_N: null
+  isp_vac_s: 429.0
+  isp_sl_s: null
+  chamber_pressure_Pa: 11730000.0
+  expansion_ratio: 58.2
+  mass_kg: 1800.0
+  length_m: 3.44
+  exit_diameter_m: null
+  confidence: published
+  source: 'Wikipedia ''Vulcain (rocket engine)'' (read 2026-10-12): 1,359 kN vac, Isp 429 s, Pc 117.3 bar, nozzle ratio 58.2, dry mass 1,800 kg (body text gives 1,686 kg for the latest build), length 3.44
+    m, O/F 6.1; the source gives engine diameter 2.09 m, not nozzle exit diameter, so exit diameter stays null'
+- name: HM7B
+  kind: liquid
+  cycle: gas_generator
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 5.0
+  thrust_vac_N: 62200.0
+  thrust_sl_N: null
+  isp_vac_s: 444.6
+  isp_sl_s: null
+  chamber_pressure_Pa: 3700000.0
+  expansion_ratio: 83.1
+  mass_kg: 165.0
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: 'Wikipedia ''HM7B'' (read 2026-10-12): 62.2 kN vac (text 62.7 kN), Isp 444.6 s, Pc 3.7 MPa (text 3.5 MPa), nozzle ratio 83.1, dry mass 165 kg, O/F 5:1'
+- name: Rutherford
+  kind: liquid
+  cycle: electric_pump
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: null
+  thrust_vac_N: 26000.0
+  thrust_sl_N: 25000.0
+  isp_vac_s: 343.0
+  isp_sl_s: 311.0
+  chamber_pressure_Pa: null
+  expansion_ratio: null
+  mass_kg: 35.0
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: 'Wikipedia ''Rutherford (rocket engine)'' (read 2026-10-12): 25 kN SL / 26 kN vac (updated version), Isp 311/343 s, dry mass 35 kg; the source gives no chamber pressure or area ratio, so those
+    stay null. Battery mass for the electric pumps is NOT in the 35 kg and is not modelled by this tool'
+- name: MA-5A Sustainer
+  kind: liquid
+  cycle: gas_generator
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.27
+  thrust_vac_N: 378000.0
+  thrust_sl_N: 269000.0
+  isp_vac_s: 309
+  isp_sl_s: 220
+  chamber_pressure_Pa: 5070000.0
+  expansion_ratio: 25.0
+  mass_kg: null
+  length_m: 2.46
+  exit_diameter_m: 1.22
+  confidence: published
+  source: Book Table 4.14, p.245
+- name: MA-5A Booster
+  kind: liquid
+  cycle: gas_generator
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.25
+  thrust_vac_N: 2104000.0
+  thrust_sl_N: 1910000.0
+  isp_vac_s: 296
+  isp_sl_s: 265
+  chamber_pressure_Pa: 4960000.0
+  expansion_ratio: 8.0
+  mass_kg: null
+  length_m: 2.57
+  exit_diameter_m: 1.22
+  confidence: published
+  source: Book Table 4.14, p.245
+- name: RS-27A
+  kind: liquid
+  cycle: gas_generator
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.25
+  thrust_vac_N: 1054000.0
+  thrust_sl_N: 890000.0
+  isp_vac_s: 302
+  isp_sl_s: 255
+  chamber_pressure_Pa: 4830000.0
+  expansion_ratio: 12.0
+  mass_kg: null
+  length_m: 3.78
+  exit_diameter_m: 1.44
+  confidence: published
+  source: Book Table 4.14, p.245
+- name: RD-170
+  kind: liquid
+  cycle: staged_combustion
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.6
+  thrust_vac_N: null
+  thrust_sl_N: 7255000.0
+  isp_vac_s: 337
+  isp_sl_s: 307
+  chamber_pressure_Pa: 24130000.0
+  expansion_ratio: 36.0
+  mass_kg: null
+  length_m: 4.01
+  exit_diameter_m: 1.45
+  confidence: published
+  source: Book Table 4.14, p.245. The table's vacuum thrust column prints 1,909 kN against a sea-level 7,255 kN, which is impossible (vacuum thrust always exceeds sea-level thrust); the vacuum figure is
+    therefore left EMPTY here rather than carried over as printed
+- name: Merlin 1A
+  kind: liquid
+  cycle: gas_generator
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: null
+  thrust_vac_N: null
+  thrust_sl_N: 319000.0
+  isp_vac_s: 300
+  isp_sl_s: 270
+  chamber_pressure_Pa: null
+  expansion_ratio: null
+  mass_kg: null
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: Book Table 4.14, p.245
+- name: Merlin 1C
+  kind: liquid
+  cycle: gas_generator
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: null
+  thrust_vac_N: null
+  thrust_sl_N: 614700.0
+  isp_vac_s: 304
+  isp_sl_s: 275
+  chamber_pressure_Pa: null
+  expansion_ratio: null
+  mass_kg: null
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: Book Table 4.14, p.245
+- name: LR87-AJ-11
+  kind: liquid
+  cycle: gas_generator
+  fuel: A-50
+  oxidizer: N2O4
+  of_ratio: 2.0
+  thrust_vac_N: 2353000.0
+  thrust_sl_N: 1984000.0
+  isp_vac_s: 302
+  isp_sl_s: 254
+  chamber_pressure_Pa: 5700000.0
+  expansion_ratio: 15.0
+  mass_kg: null
+  length_m: 3.84
+  exit_diameter_m: 1.5
+  confidence: published
+  source: Book Table 4.14, p.245
+- name: LR91-AJ-11
+  kind: liquid
+  cycle: gas_generator
+  fuel: A-50
+  oxidizer: N2O4
+  of_ratio: 1.86
+  thrust_vac_N: 445000.0
+  thrust_sl_N: null
+  isp_vac_s: 314
+  isp_sl_s: null
+  chamber_pressure_Pa: 5700000.0
+  expansion_ratio: 49.2
+  mass_kg: null
+  length_m: 2.79
+  exit_diameter_m: 1.63
+  confidence: published
+  source: Book Table 4.14, p.245
+- name: RD-253
+  kind: liquid
+  cycle: staged_combustion
+  fuel: UDMH
+  oxidizer: N2O4
+  of_ratio: 2.67
+  thrust_vac_N: 1637000.0
+  thrust_sl_N: 1472000.0
+  isp_vac_s: 316
+  isp_sl_s: 285
+  chamber_pressure_Pa: 14700000.0
+  expansion_ratio: 26.2
+  mass_kg: 1080.0
+  length_m: 2.72
+  exit_diameter_m: 1.43
+  confidence: published
+  source: Book Table 4.14, p.245
+  # dry mass 1,080 kg from Wikipedia 'RD-253' (read 2026-10-17), which also gives 1,630 kN vac /
+  # 1,470 kN SL, Isp 316/285 s, Pc 14.7 MPa, area ratio 26.2, O/F 2.67, 3.0 m long and 1.5 m across
+- name: RD-0210
+  kind: liquid
+  cycle: staged_combustion
+  fuel: UDMH
+  oxidizer: N2O4
+  of_ratio: 2.65
+  thrust_vac_N: 588000.0
+  thrust_sl_N: null
+  isp_vac_s: 327
+  isp_sl_s: null
+  chamber_pressure_Pa: 14690000.0
+  expansion_ratio: 78.2
+  mass_kg: null
+  length_m: 2.3
+  exit_diameter_m: 1.46
+  confidence: published
+  source: Book Table 4.14, p.245
+- name: HM-60
+  kind: liquid
+  cycle: gas_generator
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 5.3
+  thrust_vac_N: 1140000.0
+  thrust_sl_N: 885000.0
+  isp_vac_s: 431
+  isp_sl_s: 334
+  chamber_pressure_Pa: 11000000.0
+  expansion_ratio: 45.0
+  mass_kg: null
+  length_m: 2.87
+  exit_diameter_m: 1.75
+  confidence: published
+  source: Book Table 4.14, p.245 (HM-60 is the Vulcain)
+- name: RL10A-4-1
+  kind: liquid
+  cycle: expander
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 5.5
+  thrust_vac_N: 99200.0
+  thrust_sl_N: null
+  isp_vac_s: 451
+  isp_sl_s: null
+  chamber_pressure_Pa: 4210000.0
+  expansion_ratio: 84.0
+  mass_kg: null
+  length_m: 1.78
+  exit_diameter_m: 1.17
+  confidence: published
+  source: Book Table 4.14, p.245
+- name: RS-68
+  kind: liquid
+  cycle: gas_generator
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 6.0
+  thrust_vac_N: null
+  thrust_sl_N: 2891000.0
+  isp_vac_s: 410
+  isp_sl_s: 365
+  chamber_pressure_Pa: 9720000.0
+  expansion_ratio: 12.5
+  mass_kg: 6604
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: Book Table 4.14 p.245 (thrust, Isp, Pc, f, area ratio) and Table 4.13 p.243 (dry mass 6,604 kg, T/W 45.3)
+- name: RS-68A
+  kind: liquid
+  cycle: gas_generator
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 6.0
+  thrust_vac_N: null
+  thrust_sl_N: 3136000.0
+  isp_vac_s: 412
+  isp_sl_s: null
+  chamber_pressure_Pa: null
+  expansion_ratio: 21.5
+  mass_kg: 6745
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: Book Table 4.13, p.243
+- name: SSME 109%
+  kind: liquid
+  cycle: staged_combustion
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 6.0
+  thrust_vac_N: 2279000.0
+  thrust_sl_N: 1818000.0
+  isp_vac_s: 453
+  isp_sl_s: 380
+  chamber_pressure_Pa: 22480000.0
+  expansion_ratio: 77.5
+  mass_kg: 3526.0
+  length_m: 4.27
+  exit_diameter_m: 2.44
+  confidence: published
+  source: 'Book Table 4.14, p.245 for thrust, Isp, Pc and area ratio; dry mass 7,774 lb = 3,526 kg from the
+    L3Harris/Aerojet Rocketdyne RS-25 spec sheet (2024). NOTE A DISAGREEMENT: that sheet gives the expansion
+    ratio as 69:1 and the chamber pressure as 2,994 psia (20.6 MPa), against the book''s 77.5 and 22.48 MPa.
+    The book''s figures are kept here so the row stays a book row, but the engine-mass MER is sensitive to
+    the area ratio through sqrt(eps), so a check against this engine inherits the disagreement'
+- name: F-1
+  kind: liquid
+  cycle: gas_generator
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.27
+  thrust_vac_N: null
+  thrust_sl_N: 6770000.0
+  isp_vac_s: null
+  isp_sl_s: 263
+  chamber_pressure_Pa: null
+  expansion_ratio: 16.0
+  mass_kg: 8391
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: 'Book Table 4.11, p.241 (SA504 and subsequent): sea-level thrust 6.77 MN, Isp 263 s, dry mass 8,391 kg, area ratio 16, f = 2.27 +/- 2 %, T/W 75.4'
+- name: J-2
+  kind: liquid
+  cycle: gas_generator
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 5.5
+  thrust_vac_N: 1023000.0
+  thrust_sl_N: null
+  isp_vac_s: 421
+  isp_sl_s: null
+  chamber_pressure_Pa: null
+  expansion_ratio: 27.5
+  mass_kg: 1584
+  length_m: null
+  exit_diameter_m: null
+  confidence: published
+  source: 'Book Table 4.12, p.242 (SA504 and subsequent): altitude thrust 1,023 kN, Isp 421 s, dry mass 1,584 kg, area ratio 27.5, f = 5.50 +/- 2 %'
+- name: Gamma-2
+  kind: liquid
+  cycle: pressure_fed
+  fuel: RP-1
+  oxidizer: HTP-90
+  of_ratio: 8.23
+  thrust_vac_N: 68200.0
+  thrust_sl_N: null
+  isp_vac_s: 265.0
+  isp_sl_s: null
+  chamber_pressure_Pa: 3100000.0
+  expansion_ratio: null
+  mass_kg: null
+  length_m: null
+  exit_diameter_m: null
+  confidence: approximate
+  source: 'Krishnan et al., ''Three Bipropellants for Upper Stage Propulsion'' (propulsion-skrishnan.com), Table 3: flown engine, H2O2 at about 83 % concentration, Fvac 68.2 kN, pc 31 bar, O/F 8.23, Isp_vac
+    2,599 N-s/kg = 265.0 s. Listed here against HTP-90 because the library carries no 83 % grade'
+- name: RD161P
+  kind: liquid
+  cycle: staged_combustion
+  fuel: RP-1
+  oxidizer: HTP-98
+  of_ratio: 5.9
+  thrust_vac_N: 24500.0
+  thrust_sl_N: null
+  isp_vac_s: 319.0
+  isp_sl_s: null
+  chamber_pressure_Pa: 11770000.0
+  expansion_ratio: 265.0
+  mass_kg: null
+  length_m: null
+  exit_diameter_m: null
+  confidence: approximate
+  source: 'Krishnan et al., Table 3: H2O2 at about 97 % concentration, Fvac 24.5 kN throttling to 14.7 kN, pc 117.7 bar, O/F 5.9, Isp_vac 3,128 N-s/kg = 319.0 s, area ratio 265, Isp efficiency 0.93'
+- name: BA-44
+  kind: liquid
+  cycle: staged_combustion
+  fuel: RP-1
+  oxidizer: HTP-98
+  of_ratio: 7.5
+  thrust_vac_N: 196000.0
+  thrust_sl_N: null
+  isp_vac_s: 299.9
+  isp_sl_s: null
+  chamber_pressure_Pa: 10000000.0
+  expansion_ratio: null
+  mass_kg: null
+  length_m: null
+  exit_diameter_m: null
+  confidence: approximate
+  source: 'Krishnan et al., Table 3: DEVELOPMENT engine (not flown), Fvac 196 kN throttling to 98 kN, pc 100 bar, O/F 7.5, Isp_vac 2,941 N-s/kg = 299.9 s'
+# --- added in v0.16 (R22a). The first five are the engines the H-IIA and Soyuz-2 check cases need; the
+# --- last two fill the most conspicuous modern gaps in this database.
+- name: LE-7A
+  kind: liquid
+  cycle: staged_combustion
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 5.55
+  thrust_vac_N: 1098000.0
+  thrust_sl_N: 843000.0
+  isp_vac_s: 446.0
+  isp_sl_s: 349.0
+  chamber_pressure_Pa: 12700000.0
+  expansion_ratio: 52.0
+  mass_kg: 1832.0
+  length_m: 3.7
+  exit_diameter_m: 1.82
+  confidence: approximate
+  source: 'spaceflight101.com launch-vehicle pages (read 2026-10-17) H-IIA 202: LE-7A 1,098 kN vac, Isp 349 s SL / 446 s vac, Pc 12.7 MPa, area ratio 52,
+    O/F ~5.5 from the stage propellant split (87,100 kg LOX / 15,700 kg LH2). Sea-level thrust 843 kN and dry
+    mass 1,832 kg are JAXA figures carried by the same page; confidence approximate because the page states
+    1,078 kN in one place and 1,098 kN in another'
+- name: LE-5B
+  kind: liquid
+  cycle: expander_bleed
+  fuel: LH2
+  oxidizer: LOX
+  of_ratio: 4.55
+  thrust_vac_N: 137000.0
+  thrust_sl_N: null
+  isp_vac_s: 447.0
+  isp_sl_s: null
+  chamber_pressure_Pa: 3580000.0
+  expansion_ratio: 110.0
+  mass_kg: 285.0
+  length_m: 2.79
+  exit_diameter_m: 1.58
+  confidence: approximate
+  source: 'spaceflight101.com launch-vehicle pages (read 2026-10-17) H-IIA second stage: LE-5B 137 kN, Isp 447 s, Pc 3.58 MPa, O/F ~4.55 from the propellant split
+    (14,100 kg LOX / 3,100 kg LH2). Area ratio 110 and dry mass 285 kg are JAXA figures; the expander-bleed
+    cycle has no entry in the book''s cycle table'
+- name: RD-107A
+  kind: liquid
+  cycle: gas_generator
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.48
+  thrust_vac_N: 1021300.0
+  thrust_sl_N: 838500.0
+  isp_vac_s: 320.0
+  isp_sl_s: 263.0
+  chamber_pressure_Pa: 5850000.0
+  expansion_ratio: 18.86
+  mass_kg: 1156.0
+  length_m: 2.58
+  exit_diameter_m: null
+  confidence: approximate
+  source: 'spaceflight101.com launch-vehicle pages (read 2026-10-17) Soyuz 2-1B strap-on booster: RD-107A 838.5 kN SL / 1,021.3 kN vac, Isp 263/320 s, O/F 2.48
+    from the booster propellant split (27,900 kg LOX / 11,260 kg RP-1). Four combustion chambers fed by one
+    turbopump; the thrust and Isp above are for the whole engine, which is how a stage uses it'
+- name: RD-108A
+  kind: liquid
+  cycle: gas_generator
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.43
+  thrust_vac_N: 990200.0
+  thrust_sl_N: 792500.0
+  isp_vac_s: 321.0
+  isp_sl_s: 258.0
+  chamber_pressure_Pa: 5850000.0
+  expansion_ratio: 18.86
+  mass_kg: 1250.0
+  length_m: 2.86
+  exit_diameter_m: null
+  confidence: approximate
+  source: 'spaceflight101.com launch-vehicle pages (read 2026-10-17) Soyuz 2-1B core stage: RD-108A 792.5 kN SL / 990.2 kN vac, Isp 258/321 s, O/F 2.43 from the
+    core propellant split (63,800 kg LOX / 26,300 kg kerosene). Four chambers plus four vernier chambers,
+    which is why it is heavier and slightly lower-thrust than the RD-107A beside it'
+- name: RD-0124
+  kind: liquid
+  cycle: staged_combustion
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.34
+  thrust_vac_N: 294300.0
+  thrust_sl_N: null
+  isp_vac_s: 359.0
+  isp_sl_s: null
+  chamber_pressure_Pa: 15700000.0
+  expansion_ratio: 100.0
+  mass_kg: 572.0
+  length_m: 1.575
+  exit_diameter_m: 2.4
+  confidence: approximate
+  source: 'spaceflight101.com launch-vehicle pages (read 2026-10-17) Soyuz 2-1B third stage: RD-0124 294.3 kN vac, Isp 359 s, four chambers, closed-cycle staged
+    combustion, O/F 2.34 from the stage propellant split (17,800 kg LOX / 7,600 kg kerosene). Pc, area ratio
+    and dry mass are the commonly published figures for this engine and are not on that page'
+- name: RD-191
+  kind: liquid
+  cycle: staged_combustion
+  fuel: RP-1
+  oxidizer: LOX
+  of_ratio: 2.6
+  thrust_vac_N: 2090000.0
+  thrust_sl_N: 1920000.0
+  isp_vac_s: 337.0
+  isp_sl_s: 310.7
+  chamber_pressure_Pa: 25800000.0
+  expansion_ratio: 37.0
+  mass_kg: 2290.0
+  length_m: 4.0
+  exit_diameter_m: 1.45
+  confidence: published
+  source: 'Wikipedia ''RD-191'' (read 2026-10-17): 1,920 kN SL / 2,090 kN vac, Isp 310.7/337 s, Pc 25.8 MPa,
+    area ratio 37, O/F 2.6, dry mass 2,290 kg, 4.0 m long, 1.45 m across. Flies on Angara; a single-chamber
+    derivative of the RD-170 family already in this database'
+- name: BE-4
+  kind: liquid
+  cycle: staged_combustion
+  fuel: LCH4
+  oxidizer: LOX
+  of_ratio: null
+  thrust_vac_N: null
+  thrust_sl_N: 2447000.0
+  isp_vac_s: 340.0
+  isp_sl_s: null
+  chamber_pressure_Pa: 14000000.0
+  expansion_ratio: null
+  mass_kg: 5400.0
+  length_m: null
+  exit_diameter_m: null
+  confidence: approximate
+  source: 'Wikipedia ''BE-4'' (read 2026-10-17, re-read 2026-11-16): 2,447 kN SL originally (2,847 kN after an
+    uprating), Pc 140 bar, oxygen-rich staged combustion, LOX/LCH4, dry mass 5,400 kg for the original version.
+    THE PAGE GIVES NO VACUUM THRUST, NO EXPANSION RATIO AND NO MIXTURE RATIO. Its single Isp of 340 s carries no
+    altitude; its footnote is a 2024 factory-tour video, not a specification. This row recorded it as the
+    SEA-LEVEL value until v1.1, which was an interpretation and almost certainly the wrong one, so it is now
+    recorded as the VACUUM value and the sea-level Isp is left unknown. Why vacuum: (1) the one page found that
+    states a condition (newspaceeconomy.ca, 2024-04-01, unsourced) gives 310 s at sea level and 340 s in vacuum;
+    (2) an engineering judgement and not a checked source - 340 s at sea level would exceed what methane-oxygen engines running at more than twice this chamber
+    pressure deliver there. No primary Blue Origin or ULA figure was found, so this is still a reading of an
+    ambiguous number and NOT a verified one, and the 310 s is not adopted because its page cites nothing'
+
+motors:
+- name: P80FW
+  vehicle: Vega stage 1
+  propellant_mass_kg: 88365.0
+  inert_mass_kg: 7330.0
+  casing_k: 0.083
+  thrust_vac_N: 3040000.0
+  isp_vac_s: 280.0
+  burn_time_s: 107.0
+  diameter_m: 3.0
+  confidence: approximate
+  source: Wikipedia 'Vega (rocket)' infobox and stage table; casing_k derived as inert/propellant, so it includes the nozzle and TVC as the book's MER does
+- name: Zefiro 23
+  vehicle: Vega stage 2
+  propellant_mass_kg: 24000.0
+  inert_mass_kg: 1950.0
+  casing_k: 0.081
+  thrust_vac_N: 1200000.0
+  isp_vac_s: 287.5
+  burn_time_s: 77.0
+  diameter_m: 1.9
+  confidence: approximate
+  source: Wikipedia 'Vega (rocket)' stage table; casing_k derived as inert/propellant
+- name: Orion 50S XL
+  vehicle: Pegasus XL stage 1
+  propellant_mass_kg: 15014.0
+  inert_mass_kg: 1369.0
+  casing_k: 0.091
+  thrust_vac_N: 726000.0
+  isp_vac_s: 292.0
+  burn_time_s: 73.0
+  diameter_m: 1.28
+  confidence: approximate
+  source: Wikipedia 'Northrop Grumman Pegasus' XL stage table; casing_k derived as empty/propellant
+- name: GEM-40
+  vehicle: Delta II strap-on
+  propellant_mass_kg: 11765.0
+  inert_mass_kg: 1315.0
+  casing_k: 0.112
+  thrust_vac_N: 499000.0
+  isp_vac_s: 274.0
+  burn_time_s: 63.3
+  diameter_m: 1.016
+  confidence: approximate
+  source: 'Wikipedia ''Delta II'': gross 13,080 kg, empty 1,315 kg; casing_k derived'
+- name: AJ-60A
+  vehicle: Atlas V strap-on
+  propellant_mass_kg: 42630.0
+  inert_mass_kg: 4067.0
+  casing_k: 0.095
+  thrust_vac_N: 1688000.0
+  isp_vac_s: 279.3
+  burn_time_s: 94.0
+  diameter_m: 1.58
+  confidence: approximate
+  source: 'Wikipedia ''Atlas V'': gross 46,697 kg, propellant 42,630 kg; casing_k derived'
+
+# ----------------------------------------------------------------------------------------------------------
+# STAR-family upper-stage and apogee-kick motors.
+#
+# These are here so a small launch vehicle's upper stage can be a REAL motor instead of a rubber one. Each
+# row's casing_k is that motor's own published inert/propellant ratio, so naming the motor replaces the
+# book's generic k = 0.1154 with the mass the hardware actually has - which in this size class the book
+# over-predicts by 26-51 % (see solid_inert.MOTOR_DATASET and docs/VALIDATION_REPORT.md section 3.2).
+#
+# WHAT THESE ARE. Upper-stage and apogee-kick motors: titanium or filament-wound cases, most with no TVC,
+# no thrust termination and no flight structure beyond the attachment ring. They are the lightest class of
+# solid motor that exists. A FIRST stage needs TVC, heavier skirts and much larger flight loads, and will
+# be heavier than any casing_k here - do not borrow one of these for a booster.
+#
+# Masses, Isp and total impulse: Wikipedia 'Star (rocket stage)' family tables, read 2026-10-24, except the
+# Star 31, whose figures are Thiokol's own (Carr & Walstrum, 3rd AIAA/USU Small Satellite Conf., 1989).
+# casing_k is derived as burnout/propellant. Where the source gives total impulse and burn time but no
+# thrust, thrust is total impulse / burn time and the row says so. Diameter is the nominal case diameter in
+# inches encoded in the designation, which the source states.
+- name: Star 17A
+  vehicle: upper stage / apogee kick (TE-M-521-5)
+  propellant_mass_kg: 112.0
+  inert_mass_kg: 14.0
+  casing_k: 0.125
+  thrust_vac_N: 16800.0
+  isp_vac_s: 287.0
+  burn_time_s: 19.0
+  diameter_m: 0.432
+  confidence: approximate
+  source: "Wikipedia 'Star (rocket stage)' Star 17 table: 126 kg loaded, 14 kg empty, 112 kg propellant, Isp 287 s, total impulse 32,556 kgf-s over 19 s; thrust DERIVED as 319.3 kN-s / 19 s"
+- name: Star 20
+  vehicle: upper stage / apogee kick (TE-M-640-1); Scout stage 4 Altair IIIA
+  propellant_mass_kg: 273.2
+  inert_mass_kg: 27.7
+  casing_k: 0.101
+  thrust_vac_N: 28400.0
+  isp_vac_s: 286.5
+  burn_time_s: 27.2
+  diameter_m: 0.508
+  confidence: approximate
+  source: "Wikipedia 'Star (rocket stage)' Star 20 table: 300.9 kg loaded, 273.2 kg propellant, Isp 286.5 s, total impulse 771.77 kN-s; burn time 27.2 s from the Scout G-1 stage data, thrust DERIVED as 771.77 kN-s / 27.2 s"
+- name: Star 24C
+  vehicle: upper stage / apogee kick (TE-M-604-4)
+  propellant_mass_kg: 219.5
+  inert_mass_kg: 19.73
+  casing_k: 0.0899
+  thrust_vac_N: 21900.0
+  isp_vac_s: 282.3
+  burn_time_s: 28.0
+  diameter_m: 0.610
+  confidence: approximate
+  source: "Wikipedia 'Star (rocket stage)' Star 24 table: 239.3 kg loaded, 19.73 kg empty, 219.5 kg propellant, Isp 282.3 s, total impulse 613.9 kN-s over 28.0 s; thrust DERIVED"
+- name: Star 27
+  vehicle: upper stage / apogee kick (TE-M-616)
+  propellant_mass_kg: 334.0
+  inert_mass_kg: 27.0
+  casing_k: 0.0808
+  thrust_vac_N: null
+  isp_vac_s: 288.0
+  burn_time_s: null
+  diameter_m: 0.686
+  confidence: approximate
+  source: "Wikipedia 'Star (rocket stage)' Star 27 table: 361 kg loaded, 27 kg empty, Isp 288 s, total impulse 96,986 kgf-s = 951.1 kN-s; the table gives no burn time, so thrust is left null rather than invented"
+- name: Star 30BP
+  vehicle: upper stage / apogee kick (TE-M-700-20)
+  propellant_mass_kg: 505.0
+  inert_mass_kg: 38.0
+  casing_k: 0.0752
+  thrust_vac_N: null
+  isp_vac_s: 292.0
+  burn_time_s: null
+  diameter_m: 0.762
+  confidence: approximate
+  source: "Wikipedia 'Star (rocket stage)' Star 30 table: 543 kg loaded, 38 kg empty, Isp 292 s, total impulse 148,816 kgf-s = 1,459.3 kN-s; no burn time given, thrust left null"
+- name: Star 31
+  vehicle: upper stage (TE-M-762); Scout stage 3 Antares IIIA
+  propellant_mass_kg: 1285.9
+  inert_mass_kg: 98.3
+  casing_k: 0.0764
+  thrust_vac_N: null
+  isp_vac_s: 293.5
+  burn_time_s: null
+  diameter_m: 0.765
+  confidence: published
+  source: "Carr & Walstrum (Thiokol Corp., Elkton Division), 'Solid Rocket Propulsion for Small-Satellite Applications', 3rd AIAA/USU Small Satellite Conf. 1989, Table 1: 30.1 in, Isp 293.5 lbf-s/lbm, propellant 2,835 lbm = 1,285.9 kg, propellant mass fraction 0.929; inert DERIVED as m_p(1-pmf)/pmf"
+- name: Star 37FM
+  vehicle: upper stage / apogee kick (TE-M-783)
+  propellant_mass_kg: 1065.9
+  inert_mass_kg: 81.5
+  casing_k: 0.0765
+  thrust_vac_N: 47260.0
+  isp_vac_s: 289.8
+  burn_time_s: 63.0
+  diameter_m: 0.940
+  confidence: approximate
+  source: "Wikipedia 'Star (rocket stage)' Star 37 table: 1,147.4 kg loaded, 81.5 kg empty, 1,065.9 kg propellant, HTPB, 47.26 kN vac, Isp 289.8 s, 63 s, 1.69 m long; qualified as the FLTSATCOM apogee kick motor"
+- name: Star 37XFP
+  vehicle: upper stage / apogee kick (TE-M-714-17/18)
+  propellant_mass_kg: 883.6
+  inert_mass_kg: 71.7
+  casing_k: 0.0811
+  thrust_vac_N: 38030.0
+  isp_vac_s: 290.0
+  burn_time_s: 67.0
+  diameter_m: 0.940
+  confidence: approximate
+  source: "Wikipedia 'Star (rocket stage)' Star 37 table: 955.3 kg loaded, 71.7 kg empty, 883.6 kg propellant, HTPB, 38.03 kN vac, Isp 290.0 s, 67 s, 1.50 m long; qualified as the GPS orbit insertion motor"
+- name: Star 48B S
+  vehicle: upper stage / apogee kick (TE-M-711-17), short nozzle
+  propellant_mass_kg: 2009.9
+  inert_mass_kg: 123.8
+  casing_k: 0.0616
+  thrust_vac_N: 67600.0
+  isp_vac_s: 286.0
+  burn_time_s: 84.0
+  diameter_m: 1.219
+  confidence: approximate
+  source: "Wikipedia 'Star 48': 2,133.7 kg loaded, 123.8 kg empty, propellant mass fraction 0.942, Isp 286.0 s, total impulse 5,674.77 kN-s over 84 s; propellant and thrust DERIVED from those"
+- name: Star 48B L
+  vehicle: upper stage / apogee kick (TE-M-711-1), long nozzle
+  propellant_mass_kg: 2009.9
+  inert_mass_kg: 130.6
+  casing_k: 0.0650
+  thrust_vac_N: 69000.0
+  isp_vac_s: 292.1
+  burn_time_s: 84.0
+  diameter_m: 1.219
+  confidence: approximate
+  source: "Wikipedia 'Star 48': 2,140.5 kg loaded, 130.6 kg empty, propellant mass fraction 0.939, Isp 292.1 s, total impulse 5,799.17 kN-s over 84 s; propellant and thrust DERIVED from those"
+- name: Star 63F
+  vehicle: upper stage (TE-M-963)
+  propellant_mass_kg: 4264.5
+  inert_mass_kg: 325.9
+  casing_k: 0.0764
+  thrust_vac_N: 104400.0
+  isp_vac_s: 297.1
+  burn_time_s: 120.0
+  diameter_m: 1.600
+  confidence: approximate
+  source: "Wikipedia 'Star (rocket stage)' Star 63 table: 4,590.4 kg loaded, 325.9 kg empty, propellant mass fraction 0.929, Isp 297.1 s, total impulse 12,530.64 kN-s over 120 s; propellant and thrust DERIVED"

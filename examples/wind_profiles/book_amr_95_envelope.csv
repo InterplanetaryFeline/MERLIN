@@ -1,0 +1,11 @@
+# wind profile for launch_vehicle. altitude_m is height above the ground;
+"# speed_mps is a gust_envelope. Source: Book Fig. 9.35 (p.572): SI fit to the Atlantic Missile Range 95 % wind profile envelope. An ENVELOPE, so it is used directly as the gust speed."
+altitude_m,speed_mps
+0.0,9.144
+9599.0,75.654
+9600.0,76.200
+13999.0,76.200
+14000.0,76.200
+19999.0,22.525
+20000.0,24.384
+30000.0,24.384

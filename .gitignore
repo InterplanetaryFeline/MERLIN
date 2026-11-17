@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[co]
+.pytest_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+.coverage*
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+
+# Generated output: regenerate with the commands in outputs/README.txt
+outputs/*
+!outputs/README.txt
+!outputs/engineering_method_register.xlsx
+!outputs/engineering_method_register.csv
+
+# Designs saved from the GUI stay on your machine unless you add them on purpose
+designs/*
+!designs/README.txt
+
+# Scratch
+*.part
+*.log
+*.swp
+*~
+.DS_Store
+Thumbs.db
+
+# Working notes for the AI assistant: kept on the owner's machine, not published
+CLAUDE.md

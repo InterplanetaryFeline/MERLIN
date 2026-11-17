@@ -1,0 +1,2217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>MERLIN - launch vehicle sizing</title>
+<style>
+/* One instrument: the palette and the provenance colours are the design report's, so a value looks the same
+   here as it does in the document this produces. No webfonts - the GUI must work with no network at all. */
+:root{
+  --ink:#16202b; --muted:#5f6e7d; --line:#d6dce2; --hair:#eaeef2;
+  --accent:#1f3864; --accent2:#2b5fa8; --desk:#e9edf1; --paper:#fff;
+  --user:#2b5fa8; --reference:#15803d; --assumed:#b45309;      /* provenance, as stripes */
+  --user-bg:#eff6ff; --reference-bg:#f0fdf4; --assumed-bg:#fffbeb;
+  --ok:#15803d; --warn:#b45309; --bad:#b91c1c; --edit:#fff4d6;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{font:13px/1.45 "Segoe UI",system-ui,-apple-system,Helvetica,Arial,sans-serif;color:var(--ink);
+     background:var(--desk);display:flex;flex-direction:column}
+button,input,select,textarea{font:inherit;color:inherit}
+button{padding:4px 11px;border:1px solid var(--line);background:#fff;border-radius:3px;cursor:pointer}
+button:hover:not(:disabled){background:#f3f7fb;border-color:var(--accent2)}
+button:disabled{opacity:.45;cursor:default}
+button.primary{background:var(--accent2);border-color:#24528f;color:#fff;font-weight:600}
+button.primary:hover:not(:disabled){background:#3270bd}
+button.ghost{background:transparent;border-color:#ffffff55;color:#fff}
+button.ghost:hover:not(:disabled){background:#ffffff1f;border-color:#fff9}
+select,input[type=text],input[type=number],input[type=search]{padding:3px 6px;border:1px solid var(--line);
+     border-radius:3px;background:#fff}
+:focus-visible{outline:2px solid #ffb703;outline-offset:1px}
+
+/* ---- command bar: the configuration you are working on, and what to do with it ---- */
+header{background:var(--accent);color:#fff;padding:8px 14px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+#name{font-size:16px;font-weight:600;letter-spacing:-.1px;background:#ffffff14;border:1px solid #ffffff33;
+      color:#fff;border-radius:3px;padding:4px 9px;min-width:260px}
+#name::placeholder{color:#ffffff88;font-weight:400}
+header .based{font-size:11px;color:#ffffffb0;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header button.attn{background:#f0b429;color:#23313d;border-color:#d19b1f;font-weight:600}
+header button.attn:hover{background:#f7c75a}
+/* a field waiting for the user. The note under it already says what it is for, so the highlight carries no
+   text of its own - two labels on one row is one too many */
+.needs{outline:2px solid #f0b429;outline-offset:-2px;background:#fffaf0}
+header .sp{flex:1}
+#stat{font-size:11.5px;color:#ffffffd0;min-width:0}
+
+/* ---- panes ---- */
+main{flex:1;display:flex;min-height:0}
+#left{width:452px;min-width:320px;max-width:60%;background:var(--paper);border-right:1px solid var(--line);
+      display:flex;flex-direction:column;min-height:0}
+#drag{width:5px;cursor:col-resize;background:linear-gradient(90deg,#0000,#00000014)}
+#right{flex:1;display:flex;flex-direction:column;min-width:0;min-height:0}
+.toolbar{padding:8px 11px;border-bottom:1px solid var(--line);display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.grow{flex:1;min-width:0}
+.scroll{flex:1;overflow:auto}
+.small{font-size:11px;color:var(--muted)}
+
+/* ---- the input tree: section > topic > rows ---- */
+details.sec>summary{padding:7px 11px;cursor:pointer;font-weight:600;font-size:13px;background:#f5f8fb;
+      border-top:1px solid var(--line);position:sticky;top:0;z-index:2}
+details.sec>summary:hover{background:#eef4fa}
+details.sec[open]>summary{border-bottom:1px solid var(--hair)}
+details.top{margin:0}
+details.top>summary{padding:5px 11px 5px 22px;cursor:pointer;font-size:12px;color:#2c3e55;font-weight:600;
+      background:#fcfdfe}
+details.top>summary:hover{background:#f4f8fc}
+summary{list-style:none}
+summary::-webkit-details-marker{display:none}
+summary::before{content:"\25B8";display:inline-block;width:12px;color:var(--accent2);transition:transform .12s}
+details[open]>summary::before{transform:rotate(90deg)}
+.count{font-weight:400;color:var(--muted);font-size:11px;margin-left:5px}
+details.fold{margin:0 0 2px 22px}
+details.fold>summary{padding:3px 0;font-size:11px;color:var(--muted);font-weight:400}
+
+/* ---- one input ---- */
+.inp{display:flex;gap:9px;align-items:flex-start;padding:5px 11px 5px 22px;border-top:1px solid var(--hair);
+     border-left:3px solid transparent}
+.inp:hover{background:#f9fbfd}
+.inp.p-user{border-left-color:var(--user)}
+/* the stage count is the shape of the design rather than one of its values, so it sits above the sections
+   and says so: always expanded, slightly raised, and not foldable into a topic */
+.inp.shape{background:#f3f7fb;border-top:none;border-bottom:1px solid var(--hair);padding-top:8px;
+  padding-bottom:8px}
+.inp.shape .d{display:block}
+.inp.shape .nm{font-weight:600}
+.inp.p-reference{border-left-color:var(--reference)}
+.inp.p-assumed{border-left-color:var(--assumed)}
+.inp .lbl{flex:1;min-width:0}
+.inp .nm{font-weight:500}
+.inp .d{font-size:10.5px;color:var(--muted);margin-top:1px;display:none}
+.inp.open .d{display:block}
+.inp .path{font-family:ui-monospace,Consolas,"DejaVu Sans Mono",monospace;font-size:10px;color:#7b8794;
+     margin-top:1px;display:none;word-break:break-all}
+.inp.open .path{display:block}
+.rownote{font-size:10.5px;line-height:1.45;color:#1f4e79;background:#eaf2fb;border-left:2px solid #4a7fb5;
+     padding:3px 6px;margin-top:4px;border-radius:0 3px 3px 0}
+.ctl{flex:none;display:flex;align-items:center;gap:5px}
+.ctl input[type=text],.ctl input[type=number],.ctl select{width:148px}
+/* Several choices are longer than 148 px - "Geostationary transfer orbit", "None - core stages only" - and
+   a clipped select hides the value you have CHOSEN, which is worse than hiding an option you have not. The
+   open list is full width whatever this says, so only the resting state needs the room. */
+.ctl select{width:178px;text-overflow:ellipsis}
+.ctl input[type=checkbox]{width:16px;height:16px}
+.unit{font-size:10.5px;color:var(--muted);width:46px;flex:none;text-align:right;padding-top:4px}
+.inp.changed{background:var(--edit)}
+.inp.changed .nm::after{content:" \00B7 changed";color:var(--warn);font-weight:600;font-size:10.5px}
+.revert{border:none;background:none;color:var(--warn);cursor:pointer;padding:0 2px;font-size:14px;line-height:1}
+.legend{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--muted);padding:6px 11px;
+    border-top:1px solid var(--line);background:#fbfcfd}
+.legend i{display:inline-block;width:3px;height:11px;margin-right:5px;vertical-align:-1px}
+.legend i.u{background:var(--user)}.legend i.r{background:var(--reference)}.legend i.a{background:var(--assumed)}
+
+/* ---- results ---- */
+nav{display:flex;gap:2px;background:#dde4ec;padding:6px 8px 0;border-bottom:1px solid var(--line);overflow-x:auto}
+nav button{border-radius:3px 3px 0 0;border-bottom:none;background:#eef2f7;white-space:nowrap;padding:4px 10px}
+nav button.on{background:#fff;font-weight:600;color:var(--accent)}
+#view{flex:1;overflow:auto;padding:14px 17px;background:#fff}
+h2.sect{font-size:14px;margin:0 0 9px;font-weight:600}
+h3.sect{font-size:12.5px;margin:16px 0 5px;font-weight:600;color:#2c3e55}
+table{border-collapse:collapse;width:100%;margin:5px 0 13px;font-size:12px}
+th,td{border:1px solid var(--line);padding:3px 7px;text-align:left;vertical-align:top}
+th{background:var(--accent);color:#fff;font-weight:600;font-size:11px;position:sticky;top:-14px}
+td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+tbody tr:nth-child(even) td{background:#fafbfc}
+tr.sum td{font-weight:700;background:#eef2f7 !important}
+.kpi{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:13px}
+.kpi div{border:1px solid var(--line);border-left:3px solid var(--accent2);padding:7px 12px;background:#fbfcfd;min-width:136px}
+.kpi b{display:block;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+.kpi span{display:block;font-size:11px;color:var(--muted)}
+.kpi em{font-style:normal;font-size:11px;font-weight:600}
+.kpi em.up{color:var(--bad)}.kpi em.dn{color:var(--ok)}
+.msg{padding:9px 12px;border:1px solid;border-radius:3px;margin:0 0 12px;font-size:12.5px}
+.msg.ok{background:#f0fdf4;border-color:#86efac}
+.msg.bad{background:#fee2e2;border-color:#fca5a5}
+.msg.warn{background:#fff7ed;border-color:#fdba74}
+.msg.info{background:#f6f8fa;border-color:var(--line);color:#3b4a5a}
+.lvl-ERROR td:first-child{background:#fee2e2;font-weight:600}
+.lvl-WARNING td:first-child{background:#fff7ed}
+.lvl-INFO td:first-child{background:#f1f5f9}
+img.fig{max-width:100%;border:1px solid var(--line);background:#fff;display:block;margin:4px 0 12px}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid #ffffff55;border-top-color:#fff;
+      border-radius:50%;animation:sp .7s linear infinite;vertical-align:-2px;margin-right:5px}
+@keyframes sp{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:none}summary::before{transition:none}}
+.bars{margin:4px 0 14px}
+.bar{display:flex;align-items:center;gap:8px;margin:2px 0;font-size:11.5px}
+.bar .nm{width:236px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bar .tr{flex:1;background:#eef1f4;height:13px}
+.bar .fl{display:block;background:var(--accent2);height:100%}
+.bar .vl{width:116px;flex:none;text-align:right;font-variant-numeric:tabular-nums}
+.bar.neg .fl{background:var(--ok)}
+dialog{border:1px solid var(--line);border-radius:4px;padding:0;max-width:560px;width:92%}
+dialog::backdrop{background:#16202b66}
+dialog .bd{padding:14px 16px}
+dialog h3{margin:0 0 9px;font-size:14px}
+dialog .ft{padding:10px 16px;background:#f6f8fa;border-top:1px solid var(--line);display:flex;gap:8px;justify-content:flex-end}
+dialog label{display:block;margin:8px 0 3px;font-size:12px;font-weight:500}
+dialog input,dialog textarea{width:100%;border:1px solid var(--line);border-radius:3px;padding:5px 7px}
+.studies{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:10px 20px;margin:10px 0 2px;align-items:start}
+.studygroup h4{margin:0 0 6px;font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:#64748b;
+  border-bottom:1px solid var(--line);padding-bottom:4px}
+/* checkbox in a fixed first column, text in the second: the name never wraps under its own tick box */
+.studies label{display:grid;grid-template-columns:16px 1fr;gap:2px 7px;padding:3px 4px;cursor:pointer;
+  border-radius:3px;line-height:1.3}
+.studies label:hover{background:#f1f5f9}
+.studies label input{margin:2px 0 0}
+.studies .nm{font-size:12px}
+.studies .dep{grid-column:2;font-size:10px;color:#94a3b8}
+.pick{display:flex;flex-direction:column;gap:2px;max-height:340px;overflow:auto;margin-top:6px}
+.pick button{text-align:left;border:1px solid var(--hair);border-radius:3px;padding:6px 9px;background:#fff}
+.pick button:hover{background:#f3f7fb;border-color:var(--accent2)}
+.pick .g{font-size:11px;font-weight:600;color:var(--muted);margin:9px 0 2px}
+.pick .ds{font-size:11px;color:var(--muted);display:block;margin-top:1px;
+     overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+</style>
+</head>
+<body>
+<header>
+  <input id="name" type="text" placeholder="Name this configuration" title="The name this configuration saves under">
+  <span class="based" id="based"></span>
+  <button class="ghost" id="new">New</button>
+  <button class="ghost" id="open">Open&hellip;</button>
+  <button class="ghost" id="save" title="Write this design back to its own file">Save</button>
+  <button class="ghost" id="saveAs" title="Save under a different name and work on that one">Save as&hellip;</button>
+  <button class="ghost attn" id="attn" hidden></button>
+  <span class="sp"></span>
+  <span id="stat"></span>
+  <button class="ghost" id="studiesBtn">Analyses&hellip;</button>
+  <button class="primary" id="run">Size vehicle</button>
+</header>
+
+<main>
+  <section id="left">
+    <div class="toolbar">
+      <input id="filter" class="grow" type="search" placeholder="Find an input by name or description">
+      <label class="small"><input type="checkbox" id="onlychanged"> changed only</label>
+      <button id="reset" title="Put every value back to the file">Reset</button>
+    </div>
+    <div class="scroll" id="inputs"></div>
+    <div class="legend">
+      <span><i class="u"></i>you set it</span>
+      <span><i class="r"></i>from the book</span>
+      <span><i class="a"></i>assumed</span>
+      <span class="grow"></span>
+      <span id="nover"></span>
+    </div>
+  </section>
+  <div id="drag"></div>
+  <section id="right">
+    <nav id="tabs"></nav>
+    <div id="view"></div>
+  </section>
+</main>
+
+<dialog id="dlgOpen"><div class="bd">
+  <h3>Open a configuration</h3>
+  <p class="small">Your own designs, the starting points, the worked examples, and the real vehicles the tool is
+     checked against.</p>
+  <input id="pickFilter" type="search" placeholder="Filter by name">
+  <div class="pick" id="pick"></div>
+</div><div class="ft"><button id="openCancel">Cancel</button></div></dialog>
+
+<dialog id="dlgSave"><div class="bd">
+  <h3>Save this configuration</h3>
+  <p class="small">Writes a complete design file under <span style="font-family:ui-monospace,monospace">designs/</span>,
+     with your changes applied and marked as yours. It can be reopened here or run from the command line.</p>
+  <label for="saveName">Name</label><input id="saveName" type="text">
+  <label for="saveDesc">Description</label><textarea id="saveDesc" rows="2"></textarea>
+  <p class="small" id="saveNote"></p>
+</div><div class="ft"><button id="saveCancel">Cancel</button><button class="primary" id="saveGo">Save</button></div></dialog>
+
+<dialog id="dlgStudies"><div class="bd">
+  <h3>Analyses to run</h3>
+  <p class="small">Each one adds a tab and a section to the report. Anything an analysis depends on is run with
+     it, so ticking the shell stress also flies the trajectory and builds the load cases.</p>
+  <div class="studies" id="studyList"></div>
+  <p class="small" id="studyHint" style="margin-top:8px"></p>
+</div><div class="ft"><button id="studiesClose" class="primary">Done</button></div></dialog>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const el = (t, a, kids) => { const n = document.createElement(t);
+  for (const k in (a || {})) { if (k === "html") n.innerHTML = a[k]; else if (k === "text") n.textContent = a[k];
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), a[k]); else if (a[k] !== null && a[k] !== undefined) n.setAttribute(k, a[k]); }
+  for (const c of (kids || [])) n.append(c); return n; };
+/* One number format everywhere: a decimal point and a thin space between thousands, whatever the machine's
+   locale. With the locale left to the browser a Polish machine drew "7671,7 m/s" beside the "54.87 m" that
+   toFixed always writes, and "410,003" would read as four hundred and ten point zero zero three. */
+const fmt = (v, nd) => (v === null || v === undefined || Number.isNaN(v)) ? "–"
+  : typeof v === "number" ? v.toLocaleString("en-US", {minimumFractionDigits: nd || 0, maximumFractionDigits: nd || 0}).replace(/,/g, "\u202f") : String(v);
+/* Fields shown in a designer's unit (bar, kN, mm) are SI in the file and in S.overrides. These two convert at
+   the text box and nowhere else; 12 significant figures keeps 70.93 bar from coming back as 7093000.000000001. */
+const toShown = (v, it) => (typeof v === "number" && it.display_factor) ? Number((v / it.display_factor).toPrecision(12)) : v;
+const fromShown = (v, it) => (typeof v === "number" && it.display_factor) ? Number((v * it.display_factor).toPrecision(12)) : v;
+const shown = v => v === null || v === undefined ? "" : Array.isArray(v) ? v.join(", ") : String(v);
+
+const NOTE = "margin:6px 0 0;font-size:11px;opacity:.72;background:#f8fafc;padding:6px 8px;border-radius:4px";
+const S = {items: [], meta: {}, overrides: {}, res: null, baseline: null, tab: "summary", path: "",
+           designs: [], studyDefs: [], studies: new Set(["trajectory"]), busy: false, openSections: [],
+           cad: null, modelChecks: null, modelChecksFor: null, combinations: null,
+           launchSites: null, engines: null, pickNotes: {}, rowNotes: {}, newDesign: {}, stageCount: null, stageNote: "",
+           boosters: null, boostNote: "", writable: false, dirty: false,
+           /* Where a value came from, when it was NOT typed by the person at the keyboard - the delta-v
+              split the optimiser chose, for instance. Saved alongside the overrides so the file records
+              what actually decided the number instead of crediting the user with a search's answer. */
+           overrideSources: {},
+           hz: null, hzAz: null, hzSpeed: null, hzGamma: null, hzWidth: null,
+           study: null, meta_trades: [], sens: null};
+
+/* ------------------------------------------------------------------- CAD downloads */
+/* One button per format the server says it can write. The exact-solid formats need a geometry
+   kernel the user installs themselves, so they are shown either way - greyed with the reason
+   when it is missing, rather than hidden, so nobody has to guess why STEP is not there. */
+function cadButtons(r) {
+  const list = (S.cad && S.cad.formats) || [{fmt: "dxf", label: "", available: true, exact: false}];
+  return list.map(f => {
+    const b = el("button", {
+      text: (f.exact ? "Solid: " : "CAD: ") + f.fmt.toUpperCase(),
+      title: f.available ? f.label
+           : `${f.fmt.toUpperCase()} needs a geometry kernel. ${(S.cad.kernel || {}).reason || ""} `
+             + `Install it with: ${(S.cad.kernel || {}).install || "pip install cadquery"}`,
+      onclick: () => { if (f.available) location.href = `/api/cad?token=${r.token}&fmt=${f.fmt}`; }});
+    if (!f.available) { b.disabled = true; b.style.opacity = 0.45; }
+    return b;
+  });
+}
+
+function cadNote() {
+  if (!S.cad) return el("span");
+  const k = S.cad.kernel || {};
+  const pct = (100 * (S.cad.facet_deficit || 0)).toFixed(3);
+  const txt = k.available
+    ? `Exact solids via cadquery ${k.version}. Every solid is checked against its closed-form `
+      + `volume before it is written. The faceted formats enclose ${pct}% less volume than the `
+      + `true body of revolution; the solid formats have no such deficit.`
+    : `Only faceted formats are available: they enclose ${pct}% less volume than the true body of `
+      + `revolution, and cannot be sectioned or measured as solids. 'pip install cadquery' adds `
+      + `STEP and BREP. 3MF is the one to prefer over STL - it records its units and part names.`;
+  return el("p", {class: "note", text: txt, style: "margin:6px 0 0;font-size:11px;opacity:.72"});
+}
+
+/* ------------------------------------------------------------------ values */
+function parseVal(raw, item) {
+  if (raw === "") return null;
+  if (item.type === "bool") return raw === "true" || raw === true;
+  if (item.type === "number") { const x = Number(raw); if (Number.isNaN(x)) throw Error("not a number: " + raw); return x; }
+  if (item.type === "list") return raw.split(",").map(s => { const x = Number(s.trim()); return Number.isNaN(x) ? s.trim() : x; });
+  const n = Number(raw);
+  return (item.type === "null" && raw !== "" && !Number.isNaN(n)) ? n : raw;
+}
+function setOverride(it, value) {
+  if (JSON.stringify(value) === JSON.stringify(it.value)) delete S.overrides[it.path];
+  else S.overrides[it.path] = value;
+  /* Touching a field by hand makes it yours, whatever set it before. Without this, a value the optimiser
+     chose would keep the optimiser's provenance after the user had typed over it. */
+  delete S.overrideSources[it.path];
+  renderInputs(); countOverrides();
+}
+function countOverrides() {
+  const n = Object.keys(S.overrides).length;
+  $("#nover").textContent = n ? `${n} value${n === 1 ? "" : "s"} changed` : "nothing changed yet";
+  S.dirty = n > 0;
+  renderAttention();
+  renderBinding();
+}
+
+/* Which file Save writes to, said plainly, because "Save" with no destination is a guess. */
+function renderBinding() {
+  const where = S.writable ? S.path : null;
+  $("#save").textContent = where ? "Save" : "Save…";
+  $("#save").title = where
+    ? `Overwrite ${where}` + (S.dirty ? " with your changes" : "")
+    : `${S.path} is a shipped file, so Save will ask for a name and keep your version in designs/`;
+  $("#based").textContent = (where ? "editing " : "based on ") + S.path + (S.dirty ? " *" : "");
+  $("#based").title = S.meta.description || S.path;
+}
+
+/* ------------------------------------------------- picking a combination carries its propellants along */
+function applyCascade(it, value) {
+  /* Choosing "LOX/RP-1" and leaving the fuel box on LH2 is not a design, it is a contradiction: the sizing
+     loop resolves the combination, then warns that the stage disagrees with it. Rather than let the user
+     build that, the pick sets the stage's fuel, oxidiser and mixture ratio too. They appear as ordinary
+     overrides afterwards, so anyone who meant to depart from the combination still can. */
+  /* Naming a real engine WRITES that engine's figures into the fields, where they can be read and changed.
+     It used to blank them instead, leaving the database to fill them unseen when the design was sized: the
+     vehicle did change, but the page showed a row of empty boxes and the user had no way to see what the
+     engine had brought. The values land as ordinary overrides, each one revertible, and each recorded as
+     coming from the database rather than from the person at the keyboard. */
+  const dbm = /^(stages(?:\[\d+\]|\.\d+))\.(engine|motor)\.from_database$/.exec(it.path)
+           || (it.path === "boosters.from_database" ? [null, "boosters", "booster"] : null);
+  if (dbm) {
+    delete S.rowNotes[it.path];
+    for (const p of (S.pickNotes[it.path] || [])) delete S.rowNotes[p];     // the last pick's "not given" notes
+    S.pickNotes[it.path] = [];
+    const eng = value && S.engines ? S.engines[value] : null;
+    if (!eng) { renderInputs(); return; }       // "none of these" changes nothing: the design keeps its own
+    const block = dbm[2], stage = dbm[1];
+    const prefix = block === "booster" ? "boosters." : stage + "." + block + ".";
+    const byPath = {};
+    for (const row of S.items) byPath[row.path] = row;
+    const labelOf = p => (byPath[p] || {}).label || p;
+    const src = {s: `Engine database entry '${value}' (${eng.confidence} confidence): ${eng.source}`, t: "reference"};
+    const filled = [], missing = [], skipped = [];
+    const put = (p, v) => {
+      if (JSON.stringify(v) === JSON.stringify(byPath[p].value)) { delete S.overrides[p]; delete S.overrideSources[p]; }
+      else { S.overrides[p] = v; S.overrideSources[p] = src; }
+      filled.push(labelOf(p));
+    };
+    /* a stage sizes its thrust EITHER from a thrust-to-weight ratio OR from an absolute thrust, never both,
+       so the engine's thrust is not written into a stage that is sized by ratio (engine_db._fill's rule) */
+    const byRatio = block === "engine" ? !isBlank(valueOf(prefix + "thrust_to_weight_ignition"))
+                  : block === "motor" ? ["tw_ignition", "burn_time"].includes(valueOf(prefix + "thrust_mode"))
+                  : false;
+    const groups = [[prefix, eng[block] || {}]];
+    if (block === "engine") groups.push([stage + ".", eng.stage || {}]);
+    for (const [pre, leaves] of groups) {
+      for (const [leaf, v] of Object.entries(leaves)) {
+        const p = pre + leaf;
+        if (!byPath[p]) continue;
+        if (v === null || v === undefined) {
+          if (leaf === "name") continue;
+          missing.push(labelOf(p));
+          if (!hiddenByChoice(byPath[p])) {
+            S.rowNotes[p] = `The database entry '${value}' does not give this, so the value here is still the `
+              + "design's own from before the engine was picked. Check it against the engine.";
+            S.pickNotes[it.path].push(p);
+          }
+          continue;
+        }
+        if (byRatio && /^thrust_vac_/.test(leaf)) { skipped.push(labelOf(p)); continue; }
+        put(p, v);
+      }
+    }
+    /* the engine's own mass is read only when the mass method is "mass I give"; a published mass written
+       into a field the method ignores would be the old no-op again */
+    if (block === "engine" && eng.engine && eng.engine.mass_user_per_engine_kg !== null
+        && eng.engine.mass_user_per_engine_kg !== undefined && byPath[prefix + "mass_method"])
+      put(prefix + "mass_method", "user");
+    let note = filled.length ? `Filled from the database: ${filled.join(", ")}.` : "The database gives nothing this design has a field for.";
+    if (missing.length) note += ` The source does not give: ${missing.join(", ")} - your own values are kept there.`;
+    if (skipped.length) note += ` Not applied: ${skipped.join(", ")}, because this stage sets its thrust from a `
+      + "thrust-to-weight ratio. Clear that ratio and type the thrust to fly the engine's own.";
+    note += " Every filled value can be changed or put back with its revert button.";
+    S.rowNotes[it.path] = note;
+    renderInputs(); countOverrides();
+    return;
+  }
+  const m = /^(stages(?:\[\d+\]|\.\d+))\.propellant_combination$/.exec(it.path);
+  if (!m || !S.combinations) return;
+  const c = S.combinations[value];
+  if (!c) return;
+  const stage = m[1];
+  const byPath = {};
+  for (const row of S.items) byPath[row.path] = row;
+  const follow = [[stage + ".fuel", c.fuel], [stage + ".oxidizer", c.oxidizer],
+                  [stage + ".mixture_ratio_OF", c.of_ratio]];
+  let n = 0;
+  for (const [path, v] of follow) {
+    const target = byPath[path];
+    if (!target || v === null || v === undefined) continue;
+    if (JSON.stringify(v) === JSON.stringify(target.value)) delete S.overrides[path];
+    else S.overrides[path] = v;
+    n++;
+  }
+  if (n) { renderInputs(); countOverrides(); }
+}
+
+/* ---------------------------------------------------------------- liquid or solid, per stage
+   Every other control edits a value. This one edits the SHAPE of the design: a liquid stage carries fuel,
+   oxidiser, an engine and tanks, a solid stage carries a propellant and a motor, so switching means the
+   server rewrites the document and hands back a draft to load. Unsaved changes travel across with it, and
+   the user is told what was swapped and what of theirs was kept. */
+const STAGE_TYPE_RE = /^stages\[(\d+)\]\.stage_type$/;
+const p_in = (obj, key) => !!obj && Object.prototype.hasOwnProperty.call(obj, key);
+
+/* Rows that describe the SHAPE of the design rather than one of its values: they sit above the sections and
+   have no input item behind them. Anything that resolves a field name - "go to this field", an error's
+   suggested way out - has to know about them, or it silently does nothing, which is the failure these
+   controls were added to avoid in the first place. */
+const SHAPE_ROWS = ["stage_count", "boosters"];
+const SHAPE_LABELS = {stage_count: "Number of stages", boosters: "Strap-on boosters"};
+/* Per-stage controls that decide the shape of the design rather than one of its values, and so are always
+   shown in the specification instead of folding away with the assumptions. */
+const SHAPE_FIELD_RE = /^stages\[\d+\]\.stage_type$/;
+/* Which model flies the ascent is a choice the user makes, never housekeeping. The drag model is tagged
+   `assumed` in the shipped designs (nobody measured this vehicle's drag), which dropped the dropdown into the
+   "assumed or unused" fold while the inputs of the models NOT chosen sat in plain view above it. */
+const MODEL_FIELD_RE = /^mission\.(aerodynamics\.drag_model|atmosphere_model)$/;
+/* Each drag model reads only its own inputs. The others are not shown at all, so the panel never offers a
+   fixed Cd or a Mach table to a design that is flying on its geometry. */
+const DRAG_INPUT_MODEL = {surface_roughness_m: "geometry", nose_shape: "geometry", nose_bluntness: "geometry",
+                          constant_cd: "constant", mach_table: "table", cd_table: "table"};
+/* An input that is read only under one setting of a choice beside it (the server says which: gui_meta.SHOWN_WHEN)
+   is not shown under any other. The fixed thrust of a stage sized by ratio, the tank mass you would type if
+   the method were "mass I give": showing those invited a number that changes nothing. */
+function hiddenByChoice(it) {
+  if (!it.shown_when) return false;
+  const now = valueOf(it.shown_when.path);
+  return !it.shown_when.values.includes(now === undefined ? null : now);
+}
+function dragModelNow() {
+  const p = "mission.aerodynamics.drag_model";
+  if (p in S.overrides) return S.overrides[p];
+  const it = (S.items || []).find(i => i.path === p);
+  return (it && it.value) || "geometry";
+}
+function dragInputFor(path) {
+  const m = /^mission\.aerodynamics\.(\w+)$/.exec(path);
+  return m ? (DRAG_INPUT_MODEL[m[1]] || null) : null;
+}
+
+async function switchStageType(index, to) {
+  busy(true, `converting stage ${index + 1} to ${to}`);
+  try {
+    const out = await api("/api/stage_type", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path: S.path, overrides: S.overrides, index, to})});
+    if (!out.note.changed) { busy(false, out.note.note); return; }
+    const prevName = $("#name").value || S.meta.name || "";
+    await loadDesign(out.path);
+    $("#name").value = prevName;                 // the draft has no name of its own; keep theirs for Save as
+    /* the blanks of a half-filled brief do not go into the draft, because a document with a blank required
+       field will not load; they come back here and are re-applied, so the design the user was building up is
+       still the design they are looking at */
+    const byPath = {};
+    for (const it of S.items) byPath[it.path] = it;
+    for (const p of Object.keys(out.keep_overrides || {})) if (byPath[p]) S.overrides[p] = null;
+    for (const d of (S.newDesign.blank || []).concat(S.newDesign.flag || [])) {
+      if (p_in(out.keep_overrides, d.path) && byPath[d.path]) S.rowNotes[d.path] = d.why;
+    }
+    S.rowNotes[`stages[${index}].stage_type`] =
+      out.note.note + (out.note.added.length ? ` Added: ${out.note.added.join(", ")}.` : "") +
+      (out.note.removed.length ? ` Removed: ${out.note.removed.join(", ")}.` : "") +
+      " This is an unsaved draft - use Save to name it.";
+    renderInputs(); countOverrides();
+    busy(false, out.note.note);
+  } catch (e) { busy(false, e.message || "could not change the stage type"); showError(e); }
+}
+
+/* ---------------------------------------------------------------- how many stages
+   The one input that was not an input. The stage count was the LENGTH of the stages list in the file, so a
+   new design was two-stage because the shipped default is, and a three-stage vehicle meant editing YAML by
+   hand. Staging is the first decision in conceptual design, so it belongs at the top of the panel rather
+   than inside a section - and like the liquid/solid switch it rewrites the document, because adding a stage
+   adds a whole annotated block and moves the delta-v split and the fairing jettison stage with it. */
+async function setStageCount(n) {
+  const now = S.stageCount ? S.stageCount.n : null;
+  if (n === now) return;
+  busy(true, `rebuilding as a ${n}-stage vehicle`);
+  try {
+    const out = await api("/api/stage_count", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path: S.path, overrides: S.overrides, count: n})});
+    if (!out.note.changed) { busy(false, out.note.note); return; }
+    const prevName = $("#name").value || S.meta.name || "";
+    await loadDesign(out.path);
+    $("#name").value = prevName;                 // the draft has no name of its own; keep theirs for Save as
+    const byPath = {};
+    for (const it of S.items) byPath[it.path] = it;
+    for (const p of Object.keys(out.keep_overrides || {})) if (byPath[p]) S.overrides[p] = null;
+    for (const d of (S.newDesign.blank || []).concat(S.newDesign.flag || [])) {
+      if (p_in(out.keep_overrides, d.path) && byPath[d.path]) S.rowNotes[d.path] = d.why;
+    }
+    /* the split and the jettison stage were moved for them, so say so against those fields and not only in
+       the status line, which the next action overwrites */
+    S.stageNote = out.note.note + " This is an unsaved draft - use Save to name it.";
+    if (out.note.side_effects.some(s => s.startsWith("vehicle.dv_fractions"))) {
+      S.rowNotes["vehicle.dv_fractions"] =
+        "Rebalanced when the stage count changed. The stages you already had keep their split in proportion" +
+        " and an added stage takes an equal share - set it to whatever the staging should be.";
+    }
+    renderInputs(); countOverrides();
+    busy(false, out.note.note);
+  } catch (e) { busy(false, e.message || "could not change the number of stages"); showError(e); }
+}
+
+/* The row itself, built by hand rather than from an input item, because there is no leaf behind it. It sits
+   above the sections and is never filtered away: it is the shape of the design, not one of its values. */
+function stageCountRow() {
+  const sc = S.stageCount;
+  if (!sc) return null;
+  const row = el("div", {class: "inp p-user shape", "data-path": "stage_count",
+                         title: "How many propulsive stages the vehicle has.\n\nChanging this adds or removes"
+                                + " a whole annotated stage and rebalances the delta-v split."});
+  const lbl = el("div", {class: "lbl"}, [el("div", {class: "nm", text: "Number of stages"})]);
+  lbl.append(el("div", {class: "d", text: "Propulsive stages, counted from the pad. A stage is added on top"
+                                          + " and removed from the top; the delta-v split follows."}));
+  lbl.append(el("div", {class: "path", text: "stages[] - the shape of the design, not a value in it"}));
+  if (S.stageNote) lbl.append(el("div", {class: "rownote", text: S.stageNote}));
+  const sel = el("select", {onchange: e => setStageCount(Number(e.target.value))});
+  for (let i = sc.min; i <= sc.max; i++) {
+    sel.append(el("option", {value: String(i), text: i === 1 ? "1 stage" : `${i} stages`}));
+  }
+  sel.value = String(sc.n);
+  row.append(lbl, el("div", {class: "unit", text: ""}), el("div", {class: "ctl"}, [sel]));
+  return row;
+}
+
+/* ---------------------------------------------------------------- strap-on boosters
+   The other control that was not a control. The model has handled strap-ons since Ariane 5 and Delta IV
+   Heavy became check cases, and all 32 booster fields render properly - but only on a design whose file
+   already carries a `boosters:` block. A design without one had no way in, and a design with one had no way
+   out. Same shape as the stage count, so same treatment: the server rewrites the document and hands back a
+   draft. HOW MANY boosters there are stays an ordinary field; this control is only whether, and which. */
+async function setBoosters(kind) {
+  const now = S.boosters ? S.boosters.kind : null;
+  if (kind === now) return;
+  busy(true, kind ? `fitting ${kind} strap-on boosters` : "removing the strap-on boosters");
+  try {
+    const out = await api("/api/boosters", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path: S.path, overrides: S.overrides, kind})});
+    if (!out.note.changed) { busy(false, out.note.note); return; }
+    const prevName = $("#name").value || S.meta.name || "";
+    await loadDesign(out.path);
+    $("#name").value = prevName;                 // the draft has no name of its own; keep theirs for Save as
+    const byPath = {};
+    for (const it of S.items) byPath[it.path] = it;
+    for (const p of Object.keys(out.keep_overrides || {})) if (byPath[p]) S.overrides[p] = null;
+    for (const d of (S.newDesign.blank || []).concat(S.newDesign.flag || [])) {
+      if (p_in(out.keep_overrides, d.path) && byPath[d.path]) S.rowNotes[d.path] = d.why;
+    }
+    S.boostNote = out.note.note + " This is an unsaved draft - use Save to name it.";
+    /* the donor's numbers are a starting point, not a fit to this vehicle, and the two fields a user is
+       most likely to want to change say so where they will actually be read */
+    if (out.note.now) {
+      for (const p of ["boosters.n_total", "boosters.propellant_mass_each_kg", "boosters.diameter_m"]) {
+        if (byPath[p]) S.rowNotes[p] = "From " + out.note.donor + ", with that design's provenance. Set it"
+                                     + " to what this vehicle should carry.";
+      }
+    }
+    renderInputs(); countOverrides();
+    busy(false, out.note.note);
+  } catch (e) { busy(false, e.message || "could not change the boosters"); showError(e); }
+}
+
+function boosterRow() {
+  const b = S.boosters;
+  if (!b) return null;
+  const row = el("div", {class: "inp p-user shape", "data-path": "boosters",
+                         title: "Strap-on boosters: Ariane 5's EAPs, Delta IV Heavy's side cores.\n\n"
+                                + "Changing this adds or removes the whole booster block."});
+  const lbl = el("div", {class: "lbl"}, [el("div", {class: "nm", text: "Strap-on boosters"})]);
+  lbl.append(el("div", {class: "d", text: "Boosters alongside the first stage, jettisoned when they burn"
+                                          + " out. How many, and how big, are fields of their own once"
+                                          + " fitted."}));
+  lbl.append(el("div", {class: "path", text: "boosters - a block the design either has or does not"}));
+  if (S.boostNote) lbl.append(el("div", {class: "rownote", text: S.boostNote}));
+  const sel = el("select", {onchange: e => setBoosters(e.target.value || null)});
+  sel.append(el("option", {value: "", text: "None - core stages only"}));
+  for (const k of (b.kinds || ["solid", "liquid"])) {
+    sel.append(el("option", {value: k, text: k === "solid" ? "Solid (cast grain, like Ariane 5's EAPs)"
+                                                           : "Liquid (like Delta IV Heavy's side cores)"}));
+  }
+  sel.value = b.kind || "";
+  row.append(lbl, el("div", {class: "unit", text: ""}), el("div", {class: "ctl"}, [sel]));
+  return row;
+}
+
+/* ------------------------------------------------- fields that still need the user, and where they are */
+/* A new design is a blank brief, so the page has to say what is still blank rather than let the user press
+   Size and read it off a stack trace. The same machinery earns its keep on an EXISTING design: clear a field
+   by hand and it joins the list. The list is the server's (gui_meta.NEW_DESIGN_FIELDS), so what a new design
+   asks for and what the page chases can never drift apart. */
+function isBlank(v) { return v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length); }
+
+/* The value of an input as it stands: what the user typed if they typed anything, otherwise the file's. */
+function valueOf(path) {
+  if (path in S.overrides) return S.overrides[path];
+  const it = S.items.find(i => i.path === path);
+  return it ? it.value : undefined;
+}
+
+/* Only the fields a new design CLEARS are chased. The flagged ones - the launch site, a stage's propellant
+   combination - are optional on a design that is already complete: the shipped default sizes perfectly well
+   without naming either, and counting them would mean every design ever opened arrives with "3 fields need
+   you" against it. They still carry their note; they just do not nag. */
+function attentionSet() {
+  const want = new Set();
+  for (const d of (S.newDesign.blank || [])) want.add(d.path);
+  return want;
+}
+
+/* What naming a real engine or motor fills in for you. Mirrors engine_db.WATCHED; a test keeps the two in
+   step, because a key added there and forgotten here would start nagging about a field the library sets. */
+const DATABASE_FILLS = ["isp_vac_s", "isp_sl_s", "thrust_vac_per_engine_N", "thrust_vac_total_N",
+                        "expansion_ratio", "chamber_pressure_Pa", "prop_mass_each_kg", "burn_time_s",
+                        "mixture_ratio_OF"];
+
+function attentionPaths() {
+  const want = attentionSet();
+  /* A coordinate that a NAMED launch site fills is not an empty field waiting for the user: the library
+     supplies it as the design loads. Counting it made every check case that names a site - Scout, Vega C,
+     H-IIA - look unfinished, and worse, that false "one field is still empty" banner replaced the real
+     error whenever such a design failed to size for an unrelated reason. */
+  const siteNamed = !isBlank(valueOf("mission.launch_site.site"));
+  const filledBySite = new Set(siteNamed
+    ? ["mission.launch_site.latitude_deg", "mission.launch_site.longitude_deg"] : []);
+  /* The same reasoning, for the engine and motor databases. A stage that NAMES a real engine leaves the
+     figures that engine supplies blank on purpose - that is the whole point of naming it - and the library
+     fills them as the design loads. Counting them made `examples/example_engine_database.yaml`, the example
+     that exists to demonstrate exactly this, open with "2 fields need you" against it. */
+  const filledByLibrary = new Set();
+  for (const it of S.items) {
+    const m = /^stages\[(\d+)\]\.(engine|motor)\.from_database$/.exec(it.path);
+    if (!m || isBlank(valueOf(it.path))) continue;
+    for (const k of DATABASE_FILLS) filledByLibrary.add(`stages[${m[1]}].${m[2]}.${k}`);
+  }
+  const out = [];
+  for (const it of S.items) {
+    if (!want.has(it.path) || filledBySite.has(it.path) || filledByLibrary.has(it.path)) continue;
+    const v = (it.path in S.overrides) ? S.overrides[it.path] : it.value;
+    if (isBlank(v)) out.push(it);
+  }
+  return out;
+}
+
+function renderAttention() {
+  const miss = attentionPaths();
+  const b = $("#attn");
+  b.hidden = miss.length === 0;
+  b.textContent = miss.length === 1 ? "1 field needs you" : `${miss.length} fields need you`;
+  b.title = miss.length ? "Go to the next field that still needs a value:\n" +
+                          miss.slice(0, 12).map(i => "  " + i.label).join("\n") : "";
+}
+
+/* Open the section the field lives in, scroll to it and leave it marked. */
+function gotoField(path) {
+  /* The stage count has a row but no input item behind it - it is the shape of the design, not one of its
+     values - so the item lookup would come up empty and this would silently do nothing. That is the failure
+     this function exists to prevent: an error that names a field the page then refuses to go to. */
+  const it = SHAPE_ROWS.includes(path) ? {section: null} : S.items.find(i => i.path === path);
+  if (!it) return;
+  if (it.section && !S.openSections.includes(it.section)) S.openSections.push(it.section);
+  renderInputs();
+  const row = document.querySelector(`[data-path="${CSS.escape(path)}"]`);
+  if (row) {
+    /* The row can sit inside a closed topic, or inside the "assumed or unused" fold of an open one. Opening
+       only the section left it undrawn, and scrolling to an undrawn element does nothing at all - which is
+       what "Go to Vacuum specific impulse" did. Every fold above the row is opened first. */
+    for (let n = row.parentElement; n; n = n.parentElement) if (n.tagName === "DETAILS") n.open = true;
+    row.scrollIntoView({block: "center", behavior: "smooth"});
+    const input = row.querySelector("input,select,textarea");
+    if (input) input.focus();
+  }
+}
+
+/* ------------------------------------------- picking a launch site carries its latitude, and the floor */
+function applySiteCascade(it, value) {
+  /* A site is a latitude, and a latitude is a floor on inclination: sin b = cos i / cos lat has no solution
+     below |lat|, so a direct ascent simply cannot reach it. The shipped default sits at 28.5 deg inclination
+     from a 28.5 deg latitude, which means picking the real KSC pad at 28.6082 deg puts the mission 0.1 deg
+     under its own floor - an infeasibility the user did not ask for and would only meet on pressing Size.
+     So the pick carries the latitude across AND lifts the inclination to the floor when it has to, saying so
+     in a note under the field. Both land as ordinary overrides, revertible like any other. */
+  if (it.path !== "mission.launch_site.site" || !S.launchSites) return;
+  delete S.rowNotes["mission.launch_site.site"];
+  const site = S.launchSites[value];
+  if (!site) { renderInputs(); return; }
+  const byPath = {};
+  for (const row of S.items) byPath[row.path] = row;
+
+  const set = (path, v) => {
+    const target = byPath[path];
+    if (!target || v === null || v === undefined) return false;
+    if (JSON.stringify(v) === JSON.stringify(target.value)) delete S.overrides[path];
+    else S.overrides[path] = v;
+    return true;
+  };
+  for (const [path, v] of Object.entries(site.leaves || {})) set(path, v);
+
+  let note = site.hint || "";
+  const incPath = "mission.orbit.inclination_deg";
+  const inc = byPath[incPath];
+  if (inc && typeof site.min_inclination_deg === "number") {
+    const now = (incPath in S.overrides) ? S.overrides[incPath] : inc.value;
+    const floor = site.min_inclination_deg;
+    if (typeof now === "number" && now < floor - 1e-9) {
+      set(incPath, Math.round(floor * 1e4) / 1e4);
+      note += ` Inclination was ${now} deg, below that floor, so it has been raised to ${floor.toFixed(2)} deg.`;
+    } else if (isBlank(now)) {
+      /* A new design has not answered the inclination question yet. The floor is the one value the SITE can
+         justify on its own - the lowest it can reach - so offer it rather than leave the field empty and the
+         design unsizable. It arrives as a changed value like any other, with its revert arrow. */
+      set(incPath, Math.round(floor * 1e4) / 1e4);
+      note += ` Inclination was empty, so it has been set to ${floor.toFixed(2)} deg, the lowest this site` +
+              " can reach. Change it to whatever the mission needs, as long as it stays above that.";
+    }
+  }
+  if (note) S.rowNotes["mission.launch_site.site"] = note;
+  renderInputs(); countOverrides();
+}
+
+/* ------------------------------------------------------------------ the input tree */
+function control(it) {
+  const changed = it.path in S.overrides;
+  const val = changed ? S.overrides[it.path] : it.value;
+  let ctl;
+  const stm = STAGE_TYPE_RE.exec(it.path);
+  if (stm) {
+    /* not an override: a round trip to the server, which rewrites the document and returns a draft */
+    ctl = el("select", {onchange: e => {
+      const to = e.target.value;
+      if (to !== val) switchStageType(Number(stm[1]), to);
+    }});
+    for (const t of ["liquid", "solid"]) {
+      ctl.append(el("option", {value: t, text: t === "liquid" ? "Liquid (engine and tanks)"
+                                                              : "Solid (motor and cast grain)"}));
+    }
+    ctl.value = String(val || "liquid");
+    return ctl;
+  }
+  if (it.choices) {
+    ctl = el("select", {onchange: e => {
+      const raw = e.target.value;
+      /* a dropdown still has to go through parseVal: the tank-order choice carries "fuel,oxidizer",
+         which the model wants as a two-element list, not as a string */
+      setOverride(it, raw === "—" ? null : parseVal(raw, it));
+      if (raw !== "—") applyCascade(it, raw);
+      applySiteCascade(it, raw === "—" ? null : raw);
+    }});
+    /* A choice field whose value may legitimately be empty (pick a real engine, name a combination) gets an
+       explicit empty option - unless the list already supplies one of its own, as the launch sites do with
+       "Custom", because two ways of saying "none of these" in one dropdown is one too many. */
+    const hasOwnEmpty = it.choices.some(c => c.value === "" || c.value === null);
+    if ((it.value === null || val === null) && !hasOwnEmpty) {
+      ctl.append(el("option", {value: "—", text: "— not used"}));
+    }
+    for (const c of it.choices) ctl.append(el("option", {value: c.value, text: c.label}));
+    ctl.value = (val === null || val === undefined) ? (hasOwnEmpty ? "" : "—") : String(val);
+    if (ctl.selectedIndex < 0) { ctl.append(el("option", {value: String(val), text: String(val) + " (not in the list)"})); ctl.value = String(val); }
+  } else if (it.type === "bool") {
+    ctl = el("input", {type: "checkbox", onchange: e => setOverride(it, e.target.checked)});
+    ctl.checked = !!val;
+  } else {
+    ctl = el("input", {type: it.type === "number" ? "number" : "text", step: "any", value: shown(toShown(val, it)),
+      onchange: e => { try { setOverride(it, fromShown(parseVal(e.target.value.trim(), it), it)); $("#stat").textContent = ""; }
+                       catch (err) { $("#stat").textContent = err.message; } }});
+  }
+  return ctl;
+}
+
+/* ------------------------------------------------------------------ the delta-v split
+   This one field decides the staging, and as a bare list of fractions - "0.44, 0.56" typed into a text box -
+   it asked the user to normalise in their head, remember which entry was which stage, and know what a
+   fraction was worth in m/s. It is the most consequential input in the design and it read like a debug
+   field. Here it becomes one percentage per stage, each showing the delta-v it buys, with a running total
+   that says when it does not add up, and the optimiser that was already in the engine but had no button. */
+function dvSplitEditor(it) {
+  const nStages = S.items.filter(i => /^stages\[\d+\]\.diameter_m$/.test(i.path)).length
+                  || (Array.isArray(it.value) ? it.value.length : 2);
+  const current = () => {
+    const v = (it.path in S.overrides) ? S.overrides[it.path] : it.value;
+    const a = Array.isArray(v) ? v.slice(0, nStages).map(Number) : [];
+    while (a.length < nStages) a.push(0);
+    return a;
+  };
+  const dvReq = S.res && S.res.dv_required_mps ? S.res.dv_required_mps : null;
+  const wrap = el("div", {style: "display:flex;flex-direction:column;gap:4px;min-width:230px"});
+  const fr = current();
+  const sum = fr.reduce((a, b) => a + b, 0) || 1;
+  const boxes = [];
+
+  const commit = () => {
+    const vals = boxes.map(b => Number(b.value) / 100);
+    if (vals.some(v => !Number.isFinite(v))) return;
+    setOverride(it, vals);
+  };
+
+  fr.forEach((v, i) => {
+    const line = el("div", {style: "display:flex;align-items:center;gap:6px"});
+    line.append(el("span", {class: "small", style: "width:52px;flex:none", text: `Stage ${i + 1}`}));
+    const box = el("input", {type: "number", step: "0.1", min: "0", max: "100", style: "width:72px",
+                             value: (100 * v).toFixed(1),
+                             title: "Share of the total delta-v this stage provides",
+                             onchange: () => commit()});
+    boxes.push(box);
+    line.append(box, el("span", {class: "small", text: "%"}));
+    if (dvReq) line.append(el("span", {class: "small", style: "opacity:.7",
+                                       text: `≈ ${fmt(dvReq * v / (sum || 1), 0)} m/s`}));
+    wrap.append(line);
+  });
+
+  const total = 100 * sum;
+  const bad = Math.abs(total - 100) > 0.05;
+  wrap.append(el("div", {class: "small", style: "margin-top:2px" + (bad ? ";color:#b45309;font-weight:600" : ""),
+                         text: bad ? `adds up to ${total.toFixed(1)} % — it will be normalised to 100 %`
+                                   : "adds up to 100 %"}));
+
+  const bar = el("div", {style: "display:flex;gap:6px;margin-top:4px;flex-wrap:wrap"});
+  bar.append(el("button", {text: "Even split", title: "Give every stage the same share",
+                           onclick: () => setOverride(it, Array(nStages).fill(1 / nStages))}));
+  if (bad) bar.append(el("button", {text: "Normalise", title: "Scale these shares so they total 100 %",
+                                    onclick: () => setOverride(it, current().map(v => v / sum))}));
+  bar.append(el("button", {class: "primary", text: "Find the lightest split",
+    title: "Search for the split that gives the smallest lift-off mass, with everything else held fixed",
+    onclick: async () => {
+      busy(true, "searching for the lightest split …");
+      try {
+        const out = await api("/api/optimize", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                body: JSON.stringify({path: S.path, overrides: S.overrides})});
+        setOverride(it, out.fractions);
+        const saved = out.baseline_glom_kg && Number.isFinite(out.baseline_glom_kg)
+          ? ` — ${fmt(out.baseline_glom_kg - out.glom_kg, 0)} kg lighter than the current split` : "";
+        busy(false, `Best split ${out.fractions.map(x => (100 * x).toFixed(1) + " %").join(" / ")}${saved}. `
+                    + "A local optimum with the stage count and structure fixed, not a global one.");
+      } catch (e) { busy(false, ""); showError(e); }
+    }}));
+  wrap.append(bar);
+  return wrap;
+}
+
+function inputRow(it) {
+  const changed = it.path in S.overrides;
+  const val0 = changed ? S.overrides[it.path] : it.value;
+  const needs = (S.attnSet && S.attnSet.has(it.path) && isBlank(val0))
+             || (it.shown_when && it.shown_when.required && isBlank(val0));   // the choice above now needs it
+  const row = el("div", {class: "inp p-" + it.provenance + (changed ? " changed" : "") + (needs ? " needs" : ""),
+                         "data-path": it.path,
+                         title: it.description + (it.source ? "\n\nSource: " + it.source : "")});
+  const lbl = el("div", {class: "lbl"}, [el("div", {class: "nm", text: it.label})]);
+  lbl.append(el("div", {class: "d", text: it.description}));
+  lbl.append(el("div", {class: "path", text: it.path}));
+  /* a note tied to this field: what a library pick brought with it, or what still needs attention. Always
+     visible, unlike the description, because a note is the consequence of something the user just did. */
+  if (S.rowNotes[it.path]) lbl.append(el("div", {class: "rownote", text: S.rowNotes[it.path]}));
+  lbl.addEventListener("click", () => row.classList.toggle("open"));
+  const ctl = it.path === "vehicle.dv_fractions" ? dvSplitEditor(it) : control(it);
+  row.append(lbl, el("div", {class: "unit", text: it.display_units || (it.units === "-" ? "" : it.units)}),
+             el("div", {class: "ctl"}, changed
+               ? [ctl, el("button", {class: "revert", title: "Put this back to the file value",
+                                     text: "↺", onclick: () => { delete S.overrides[it.path]; renderInputs(); countOverrides(); }})]
+               : [ctl]));
+  return row;
+}
+
+function renderInputs() {
+  S.attnSet = attentionSet();                    // before the rows are built: each one asks whether it is in it
+  const host = $("#inputs"); host.textContent = "";
+  /* the shape of the design, above the sections and never filtered out: how many stages it has, and
+     whether it has strap-ons. Neither is a value in the file, so neither has an input row of its own. */
+  for (const make of [stageCountRow, boosterRow]) {
+    const r = make();
+    if (r) host.append(r);
+  }
+  const f = $("#filter").value.trim().toLowerCase();
+  const only = $("#onlychanged").checked;
+  const match = it => (!only || it.path in S.overrides) &&
+    (!f || it.label.toLowerCase().includes(f) || it.path.toLowerCase().includes(f) ||
+     (it.description || "").toLowerCase().includes(f));
+  const secs = new Map();
+  const drag = dragModelNow();
+  for (const it of S.items) {
+    if (!match(it)) continue;
+    const needs = dragInputFor(it.path);
+    if (needs && needs !== drag) continue;       // an input of a drag model that is not the one selected
+    if (hiddenByChoice(it)) continue;            // an input the method chosen beside it never reads
+    if (!secs.has(it.section)) secs.set(it.section, new Map());
+    const tops = secs.get(it.section);
+    if (!tops.has(it.topic)) tops.set(it.topic, []);
+    tops.get(it.topic).push(it);
+  }
+  if (!secs.size) { host.append(el("p", {class: "small", style: "padding:14px", text: "Nothing matches that."})); return; }
+  for (const [section, tops] of secs) {
+    const n = [...tops.values()].reduce((a, b) => a + b.length, 0);
+    const openSec = !!f || only || S.openSections.includes(section);
+    const sec = el("details", openSec ? {class: "sec", open: "open"} : {class: "sec"});
+    sec.append(el("summary", {html: `${section}<span class="count">${n}</span>`}));
+    for (const [topic, rows] of tops) {
+      // What is shown is "the specification"; what folds away is "how the model fills the gaps".
+      // Provenance alone is the wrong test: on a real-vehicle check case every published figure is tagged
+      // `reference`, so grouping by `user` would hide the payload mass and the Isp and show nothing but the
+      // empty optional overrides. The specification is anything you changed, plus anything that HAS a value
+      // and came from a person or a source. Assumptions, and optional fields left empty, fold.
+      const spec = rows.filter(r => r.path in S.overrides ||
+        (r.value !== null && r.value !== undefined && (r.provenance === "user" || r.provenance === "reference")) ||
+        // an empty dropdown is an invitation, not clutter: "pick a real engine" and "name a propellant
+        // combination" are the two most useful controls on a stage and both start empty
+        (r.choices && r.provenance === "user") ||
+        /* A control that changes the SHAPE of the design is never an assumption to fold away. A liquid
+           design does not spell out `stage_type` - liquid is the default - so the row is synthesised and
+           honestly tagged `assumed`, which used to drop it into the "assumed or unused" fold. The effect
+           was that the one control that turns a stage into a solid motor was hidden behind a disclosure
+           labelled as housekeeping, while the stage count and the boosters sat at the top of the panel. */
+        SHAPE_FIELD_RE.test(r.path) ||
+        // the model choices, and the inputs of the drag model that is selected, are what the user is here for
+        MODEL_FIELD_RE.test(r.path) || dragInputFor(r.path) === drag ||
+        // a choice other inputs hang on, and the inputs it has just brought into play, stay in view
+        r.controls || !!r.shown_when ||
+        // a row carrying a note is one the page has just said something about; it must not be folded away
+        !!S.rowNotes[r.path]);
+      const rest = rows.filter(r => !spec.includes(r));
+      const top = el("details", (openSec && (spec.length || f || only)) ? {class: "top", open: "open"} : {class: "top"});
+      top.append(el("summary", {html: `${topic}<span class="count">${spec.length} set${rest.length ? ", " + rest.length + " assumed or unused" : ""}</span>`}));
+      for (const it of spec) top.append(inputRow(it));
+      if (rest.length) {
+        const fold = el("details", (f || only) ? {class: "fold", open: "open"} : {class: "fold"});
+        fold.append(el("summary", {text: `${rest.length} assumed or unused value${rest.length === 1 ? "" : "s"}`}));
+        for (const it of rest) fold.append(inputRow(it));
+        top.append(fold);
+      }
+      sec.append(top);
+    }
+    host.append(sec);
+  }
+}
+
+/* ------------------------------------------------------------------ server */
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const ct = r.headers.get("content-type") || "";
+  if (!ct.includes("json")) { if (!r.ok) throw Error(await r.text()); return r; }
+  const j = await r.json();
+  if (!r.ok || j.error) {
+    // Carry the actionable parts of the error, not just its sentence: `field` is the input at fault and
+    // `options` are the computed ways out. Throwing a bare Error here used to discard both.
+    const err = Error(j.error || ("HTTP " + r.status));
+    err.field = j.field || null;
+    err.options = j.options || null;
+    throw err;
+  }
+  return j;
+}
+function busy(on, msg) {
+  S.busy = on;
+  for (const id of ["run", "save", "saveAs", "open", "new"]) $("#" + id).disabled = on;
+  $("#stat").innerHTML = on ? `<span class="spin"></span>${msg || "working"}` : (msg || "");
+}
+
+async function loadDesign(path) {
+  busy(true, "loading");
+  try {
+    const d = await api("/api/design?path=" + encodeURIComponent(path));
+    S.path = path; S.items = d.items; S.meta = d.meta || {}; S.overrides = {};
+    S.overrideSources = {};
+    // the drop zones belong to the design that was flown, so they do not survive opening another one
+    S.hz = null; S.hzAz = null; S.sens = null; S.study = null;
+    S.openSections = d.open_sections || [];
+    S.newDesign = d.new_design || {};
+    S.stageCount = d.stage_count || null;
+    S.boosters = d.boosters || null;
+    S.stageNote = ""; S.boostNote = "";
+    S.writable = !!d.writable;
+    S.rowNotes = {};
+    $("#name").value = S.meta.name || "";
+    renderInputs(); countOverrides();
+    S.res = null; renderTabs(); render();
+    busy(false, "");
+  } catch (e) { busy(false, ""); showError(e); }
+}
+
+async function size() {
+  busy(true, "sizing");
+  try {
+    const body = {path: S.path, overrides: S.overrides, studies: [...S.studies]};
+    const r = await api("/api/size", {method: "POST", headers: {"Content-Type": "application/json"},
+                                      body: JSON.stringify(body)});
+    S.res = r; renderTabs();
+    if (!TABS().some(t => t[0] === S.tab)) S.tab = "summary";
+    /* The design asked to be optimised, so the vehicle that was sized is NOT the one in the panel. Write
+       the split that was actually used back into the inputs, or the user is reading a lift-off mass for a
+       staging decision the page is still showing them as something else. */
+    let note = "";
+    if (r.optimised && r.optimised.applied) {
+      const it = S.items.find(i => i.path === "vehicle.dv_fractions");
+      if (it) S.overrides["vehicle.dv_fractions"] = r.optimised.now;
+      /* a search chose this, not a person: say so, so that saving records it honestly */
+      S.overrideSources["vehicle.dv_fractions"] = {
+        s: `Chosen by the delta-v split optimiser (objective: ${r.optimised.objective}), a local optimum`,
+        t: "assumed"};
+      S.rowNotes["vehicle.dv_fractions"] = r.optimised.why;
+      renderInputs(); countOverrides();
+      note = " — split optimised to " + r.optimised.now.map(x => (100 * x).toFixed(1) + " %").join(" / ");
+    } else if (r.optimised) {
+      S.rowNotes["vehicle.dv_fractions"] = "Optimisation was requested but not applied: " + r.optimised.why;
+      renderInputs();
+      note = " — optimisation was requested but did not apply";
+    }
+    render();
+    busy(false, (r.converged ? `converged in ${r.iterations} iterations` : "did not converge") + note);
+  } catch (e) { busy(false, ""); showError(e); }
+}
+
+function showError(e) {
+  S.tab = "summary"; renderTabs();
+  $("#view").textContent = "";
+  /* A design still being filled in has not failed, it is unfinished, and what comes back from the server
+     reflects that badly: a blank field surfaces as whatever arithmetic hit the null first, which for a blank
+     payload envelope is a TypeError about NoneType. Leading with that invites a bug report. So when fields
+     are still empty, the empty fields ARE the message, and the technical detail is demoted to a line
+     underneath for anyone who wants it. */
+  const miss = attentionPaths();
+  if (miss.length) {
+    const head = el("div", {class: "msg bad"}, [
+      el("b", {text: miss.length === 1 ? "One field is still empty."
+                                       : `${miss.length} fields are still empty.`}),
+      el("div", {style: "margin-top:4px", text:
+        "A design cannot be sized until it is complete. Still needed: " +
+        miss.slice(0, 6).map(i => i.label).join(", ") +
+        (miss.length > 6 ? `, and ${miss.length - 6} more` : "") + "."})]);
+    head.append(el("div", {style: "margin-top:8px"},
+                   [el("button", {class: "primary", text: "Go to the first one",
+                                  onclick: () => gotoField(miss[0].path)})]));
+    $("#view").append(head);
+    $("#view").append(el("p", {class: "small", style: "padding:0 2px",
+                               text: "What the model reported: " + e.message}));
+    return;
+  }
+  /* The design is complete, so this is a real engineering refusal rather than an unfinished form. When the
+     model knows which input caused it, take the user to that input; when it knows the ways out, offer them
+     as buttons with the numbers already worked out. A message that says "reduce the diameter or add
+     propellant" is only useful if you also know which diameter, and to what. */
+  const box = el("div", {class: "msg bad"}, [el("b", {text: "That did not run. "}),
+                                             el("span", {text: e.message})]);
+  /* A field the page can actually reach: an input row, or the stage count, which has a row of its own
+     without an item behind it. Anything else must not get a button that goes nowhere. */
+  const reachable = p => SHAPE_ROWS.includes(p) || S.items.some(i => i.path === p);
+  const labelOf = p => SHAPE_LABELS[p] || ((S.items.find(i => i.path === p) || {}).label || p);
+  const act = el("div", {style: "margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"});
+  if (e.field && reachable(e.field))
+    act.append(el("button", {text: "Go to " + labelOf(e.field), onclick: () => gotoField(e.field)}));
+  for (const opt of (e.options || [])) {
+    const canApply = opt.path && opt.value !== null && opt.value !== undefined
+                     && S.items.some(i => i.path === opt.path);
+    /* some ways out are not a value to set but a control to use - "give the vehicle another stage" is the
+       stage-count dropdown, not an override - so those carry `field` and get a button that goes there */
+    const canGo = !canApply && reachable(opt.field || opt.path);
+    act.append(el("button", {
+      class: canApply ? "primary" : "",
+      text: canApply || canGo ? opt.label : opt.label + " (do this yourself)",
+      title: opt.note || "",
+      onclick: () => {
+        if (!canApply) { if (canGo) gotoField(opt.field || opt.path); return; }
+        S.overrides[opt.path] = opt.value;
+        renderInputs(); countOverrides(); gotoField(opt.path);
+        busy(false, `${labelOf(opt.path)} set to ${opt.value}. Press Size vehicle to try again.`);
+      }}));
+  }
+  if (act.children.length) box.append(act);
+  for (const opt of (e.options || [])) {
+    if (opt.note) box.append(el("p", {class: "small", style: "margin:6px 0 0", text: `${opt.label}: ${opt.note}`}));
+  }
+  $("#view").append(box);
+}
+
+/* ------------------------------------------------------------------ tabs */
+/* the study summaries come back keyed by field name; these are what a person should read instead */
+const SUMMARY_LABELS = {
+  governing: "Governing case", moment_kNm: "Governing bending moment [kN\u00b7m]", z_m: "at z [m]",
+  thickest_mm: "Thickest shell required [mm]", shell: "Which shell", driver: "Sized by",
+  mass_ratio: "Monocoque / relationship mass", converged: "Converged",
+  max_q_kPa: "Maximum dynamic pressure [kPa]", burnout_h_km: "Burnout altitude [km]",
+  burnout_v_mps: "Burnout speed [m/s]", axial_g: "Design axial load factor [g]",
+  lateral_g: "Design lateral load factor [g]", event: "Governing event",
+  development_usd: "Development cost [$]", per_flight_usd: "Cost per flight [$]",
+  usd_per_kg: "Cost per kg to orbit [$]", year: "Cost year",
+  controllability: "Worst control authority M\u03b4/M_A", t_s: "at t [s]", trim_deg: "Trim deflection [deg]",
+  p05_glom_kg: "Lift-off mass, 5th percentile [kg]", p50_glom_kg: "Lift-off mass, median [kg]",
+  p95_glom_kg: "Lift-off mass, 95th percentile [kg]", n: "Samples",
+  payload_kg: "Payload at the optimum [kg]", gain_kg: "Payload gained [kg]", binding: "Binding limit",
+  attempted: "Flown", status: "Outcome", drag_loss_mps: "Drag loss [m/s]",
+  peak_cd: "Peak drag coefficient", drag_shape: "Shape at lift-off",
+};
+
+const STUDY_TABS = {
+  trajectory: ["trajectory", "Trajectory", "trajectory_png"],
+  loads: ["loads", "Loads", "loads_png"],
+  structure: ["structure", "Structure", "structure_png"],
+  stability: ["stability", "Stability", "stability_png"],
+  payload_env: ["payload_env", "Payload environment", null],
+  ascent_optimum: ["ascent_optimum", "Pitch programme", "ascent_opt_png"],
+  ballistics: ["ballistics", "Internal ballistics", "ballistics_png"],
+  performance: ["performance", "Capability", "performance_png"],
+  cost: ["cost", "Cost", null],
+  uncertainty: ["uncertainty", "Uncertainty", "uncertainty_png"],
+  staging: ["staging", "Staging optimum", "staging_png"],
+};
+/* Tabs that exist but are not offered. Their code and their server routes are kept, so putting one back is
+   deleting its name from this list. "model" is validation evidence for the methods rather than anything about
+   the design that is open; "architecture" lists every launcher family on disk whatever design is open, which
+   reads as if an Ariane 6 family could be sized from a two-stage example. Hidden at the owner's request. */
+const HIDDEN_TABS = ["architecture", "model"];
+function TABS() {
+  let base = [["summary", "Summary"], ["budget", "Δv budget"], ["stages", "Stages"], ["mass", "Masses"],
+                ["drawings", "Drawings"], ["geometry", "Geometry"], ["dropzones", "Drop zones"],
+                ["studies", "Trade & compare"], ["sensitivity", "Sensitivity"],
+                ["architecture", "Architecture & families"],
+                ["checks", "Checks"], ["model", "Model checks"]];
+  base = base.filter(t => !HIDDEN_TABS.includes(t[0]));
+  for (const k of (S.res ? S.res.studies || [] : [])) if (STUDY_TABS[k]) base.push([STUDY_TABS[k][0], STUDY_TABS[k][1]]);
+  base.push(["report", "Report"]);
+  return base;
+}
+function renderTabs() {
+  const n = $("#tabs"); n.textContent = "";
+  for (const [k, lab] of TABS())
+    n.append(el("button", {class: k === S.tab ? "on" : "", text: lab, onclick: () => { S.tab = k; renderTabs(); render(); }}));
+}
+
+/* The drag coefficient this ascent flew with, term by term: the geometry build-up is an estimate, and the only
+   honest way to show an estimate is with its parts, so a reader can see which one to doubt. */
+/* Did the flown ascent end on the orbit the mission asked for? The first thing anyone asks of a trajectory,
+   and until v1.1 the tab answered with a burnout altitude and a speed and left the reader to work it out. */
+const ORBIT_WORD = {reached: "Yes", short: "Short of the target", suborbital: "No"};
+function orbitCheck(o) {
+  const box = el("div", {});
+  box.append(el("h3", {class: "sect", text: "Orbit reached?"}));
+  const km = x => fmt(x / 1e3, 0);
+  const good = o.verdict === "reached";
+  const colour = !o.checked ? "#f8fafc" : good ? "#e8f5e9" : o.verdict === "short" ? "#fff8e1" : "#fdecea";
+  box.append(el("p", {style: `margin:4px 0 8px;padding:8px 10px;border-radius:4px;background:${colour}`,
+                      html: (o.checked ? `<b>${ORBIT_WORD[o.verdict] || ""}.</b> ` : "") + (o.headline || "")}));
+  if (!o.checked) return box;
+  const rows = [];
+  if (o.eccentricity !== null && o.eccentricity !== undefined) {
+    rows.push(["Perigee altitude [km]", km(o.perigee_alt_m), km(o.target_perigee_alt_m)]);
+    rows.push(["Apogee altitude [km]", km(o.apogee_alt_m), km(o.target_apogee_alt_m)]);
+    rows.push(["Eccentricity", o.eccentricity.toFixed(4), ""]);
+  }
+  rows.push(["Inertial speed at burnout [m/s]", fmt(o.inertial_speed_mps, 0), ""]);
+  rows.push(["Inertial flight path angle at burnout [deg]", o.inertial_gamma_deg.toFixed(2), "0.00"]);
+  if (o.speed_margin_mps !== null && o.speed_margin_mps !== undefined)
+    rows.push(["Speed to spare against the budget [m/s]", (o.speed_margin_mps >= 0 ? "+" : "") + fmt(o.speed_margin_mps, 0), ""]);
+  box.append(table(["", "Flown", "Asked for"], rows, [1, 2]));
+  const notes = (o.notes || []).slice();
+  if (o.eccentricity !== null && o.eccentricity !== undefined)
+    notes.push(`Counted as reached within ${km(o.tolerance_perigee_m)} km at perigee and ${km(o.tolerance_apogee_m)} km at apogee: `
+               + "an assumed reporting tolerance, not an injection accuracy. The launch site's "
+               + `${fmt(o.site_speed_mps, 0)} m/s of rotation is added back to the flown speed to get the inertial one.`);
+  for (const n of notes) box.append(el("p", {class: "small", text: n}));
+  return box;
+}
+function timelineTable(tl) {
+  const box = el("div", {});
+  box.append(el("h3", {class: "sect", text: "Events timeline"}));
+  box.append(table(["t [s]", "Event", "Altitude [km]", "Downrange [km]", "Speed [m/s]", "Mach", "γ [deg]", "q [kPa]", "Mass [kg]"],
+    tl.map(e => [fmt(e.t_s, 1), e.name, fmt(e.h_m / 1e3, 1), fmt(e.x_m / 1e3, 0), fmt(e.v_mps, 0), e.mach === null ? "–" : e.mach.toFixed(2),
+                 e.gamma_deg.toFixed(1), fmt(e.q_Pa / 1e3, 1), fmt(e.mass_kg, 0)]), [0, 2, 3, 4, 5, 6, 7, 8]));
+  box.append(el("p", {class: "small", text: "Ignitions, the pitch kick, burnouts and jettisons are logged by the "
+    + "integration as they happen; Mach 1, maximum dynamic pressure and peak axial acceleration (thrust less "
+    + "drag, over mass) are read from the recorded history. Speed is relative to the launch site; γ is the "
+    + "flight path angle above the horizon. No Mach number is given above 100 km."}));
+  return box;
+}
+function dragTable(ss) {
+  const box = el("div");
+  box.append(el("h3", {text: "Drag coefficient, built up from this vehicle's geometry"}));
+  box.append(el("p", {class: "small", text: "Lift-off shape - " + (ss.drag_shape || []).join("; ")
+    + ". Each Mach number is evaluated at the altitude this ascent reached it. The last column is the book's "
+    + "Titan II curve (Fig. 6.13), which every design used to be flown on whatever its shape."}));
+  const f3 = x => (x === null || x === undefined) ? "" : Number(x).toFixed(3);
+  box.append(table(["Mach", "Altitude [km]", "Skin friction", "Nose and flares", "Boattail", "Base",
+                    "Cd, engines on", "Cd, engines off", "Titan II curve"],
+    ss.drag_rows.map(d => [Number(d.mach).toFixed(1), (d.altitude_m / 1e3).toFixed(1), f3(d.friction),
+                           f3(d.forebody), f3(d.boattail), f3(d.base), f3(d.total), f3(d.total_power_off),
+                           f3(d.book_titan2)]), [0, 1, 2, 3, 4, 5, 6, 7, 8]));
+  box.append(el("p", {class: "small", text: "An estimate, not a measurement: no protuberances, fins, "
+    + "core-to-booster interference or plume effects. The drag model, surface roughness, nose shape and nose "
+    + "bluntness are inputs under Mission > Trajectory model."}));
+  return box;
+}
+
+function table(headers, rows, numeric) {
+  const t = el("table"), h = el("tr");
+  headers.forEach((x, i) => h.append(el("th", {class: (numeric || []).includes(i) ? "n" : "", html: x})));
+  t.append(el("thead", {}, [h]));
+  const b = el("tbody");
+  for (const r of rows) {
+    const cls = Array.isArray(r) ? "" : r.cls, cells = Array.isArray(r) ? r : r.cells;
+    const tr = el("tr", cls ? {class: cls} : {});
+    cells.forEach((c, i) => {
+      const td = el("td", {class: (numeric || []).includes(i) ? "n" : ""});
+      /* a cell may be an element, not just text: the Checks tab puts "go to this field" and one-click
+         fixes inside the message cell, and String(node) would render "[object HTMLDivElement]" */
+      if (c instanceof Node) td.append(c); else td.innerHTML = String(c);
+      tr.append(td);
+    });
+    b.append(tr);
+  }
+  t.append(b); return t;
+}
+const fig = key => el("img", {class: "fig", src: `/api/figure?token=${S.res.token}&key=${key}`, alt: key, loading: "lazy"});
+
+function kpis(list) {
+  const d = el("div", {class: "kpi"});
+  for (const [label, value, note] of list)
+    d.append(el("div", {}, [el("span", {text: label}), el("b", {text: value}), el("em", {html: note || ""})]));
+  return d;
+}
+
+/* ------------------------------------------------------------------ drop zones
+   Where the jettisoned hardware lands. The numbers come from the server, which sizes and flies the design
+   before it answers, so this tab is the one place in the GUI that needs a converged trajectory.
+
+   THE MAP IS DRAWN HERE, FROM NOTHING. No tile layer, no mapping library, no CDN: this GUI is meant to work
+   with no network at all, and a drop-zone tab that goes blank on an air-gapped machine would be worse than a
+   plain one. What that costs is the coastline - the grid below shows the geometry correctly but gives nothing
+   to judge it against, and "is this box over land?" is exactly the question a drop zone is asked. That
+   question is answered by the KML export, which opens over imagery in Google Earth. */
+
+async function fetchHazard() {
+  const body = {path: S.path, overrides: S.overrides};
+  if (S.hzAz !== null && S.hzAz !== undefined) body.azimuth_deg = S.hzAz;
+  if (S.hzSpeed !== null) body.sep_speed_frac = S.hzSpeed;
+  if (S.hzGamma !== null) body.sep_gamma_deg = S.hzGamma;
+  if (S.hzWidth !== null && S.hzWidth !== "") body.cross_half_width_m = S.hzWidth;
+  busy(true, "flying the design and falling the hardware …");
+  try {
+    const r = await fetch("/api/hazard", {method: "POST", headers: {"Content-Type": "application/json"},
+                                          body: JSON.stringify(body)});
+    S.hz = await r.json();
+  } catch (e) { S.hz = {error: String(e.message || e)}; }
+  finally { busy(false); }
+  render();
+}
+
+const lonLabel = g => `${Math.abs(g).toFixed(0)}°${g < 0 ? "W" : "E"}`;
+const latLabel = g => `${Math.abs(g).toFixed(0)}°${g < 0 ? "S" : "N"}`;
+
+function hzDraw(host, hz) {
+  /* An equirectangular plot of the same geometry the exports carry: pad, track, boxes, nominal impacts. */
+  host.textContent = "";
+  const feats = (hz.features || []).filter(f => f.ring);
+  if (!feats.length || !hz.site || hz.site.longitude_deg === null) {
+    host.append(el("p", {class: "small", style: "padding:8px", text:
+      "Nothing to draw: no item comes down with a known longitude."}));
+    return;
+  }
+  const all = [[hz.site.latitude_deg, hz.site.longitude_deg]];
+  for (const f of feats) f.ring.forEach(p => all.push(p));
+  if (hz.ground_track) hz.ground_track.forEach(p => all.push(p));
+  const lats = all.map(p => p[0]), lons = all.map(p => p[1]);
+  const pad = 2.0;
+  let la0 = Math.min(...lats) - pad, la1 = Math.max(...lats) + pad;
+  let lo0 = Math.min(...lons) - pad, lo1 = Math.max(...lons) + pad;
+  // keep degrees of latitude and longitude at the same scale, so the boxes are not stretched out of shape
+  const W = 760, H = 380;
+  const spanLo = Math.max(lo1 - lo0, (la1 - la0) * (W / H)), spanLa = spanLo * (H / W);
+  const cLo = 0.5 * (lo0 + lo1), cLa = 0.5 * (la0 + la1);
+  lo0 = cLo - spanLo / 2; lo1 = cLo + spanLo / 2;
+  la0 = cLa - spanLa / 2; la1 = cLa + spanLa / 2;
+  const X = lo => ((lo - lo0) / (lo1 - lo0)) * W, Y = la => H - ((la - la0) / (la1 - la0)) * H;
+  const step = spanLo > 40 ? 10 : spanLo > 16 ? 5 : 2;
+
+  const parts = [`<rect width="${W}" height="${H}" fill="#eef2f6"/>`];
+  for (let g = Math.ceil(lo0 / step) * step; g <= lo1; g += step)
+    parts.push(`<line x1="${X(g).toFixed(1)}" y1="0" x2="${X(g).toFixed(1)}" y2="${H}" stroke="#cbd5e1"/>`
+      + `<text x="${(X(g) + 3).toFixed(1)}" y="${H - 5}" font-size="10" fill="#64748b">${lonLabel(g)}</text>`);
+  for (let g = Math.ceil(la0 / step) * step; g <= la1; g += step)
+    parts.push(`<line x1="0" y1="${Y(g).toFixed(1)}" x2="${W}" y2="${Y(g).toFixed(1)}" stroke="#cbd5e1"/>`
+      + `<text x="4" y="${(Y(g) - 4).toFixed(1)}" font-size="10" fill="#64748b">${latLabel(g)}</text>`);
+  if (hz.ground_track)
+    parts.push(`<polyline points="${hz.ground_track.map(p => X(p[1]).toFixed(1) + "," + Y(p[0]).toFixed(1)).join(" ")}" `
+      + `fill="none" stroke="#0b7285" stroke-width="2" stroke-dasharray="5 4"/>`);
+  feats.forEach((f, i) => {
+    parts.push(`<polygon points="${f.ring.map(p => X(p[1]).toFixed(1) + "," + Y(p[0]).toFixed(1)).join(" ")}" `
+      + `fill="#c92a2a" fill-opacity="0.16" stroke="#c92a2a" stroke-width="1"/>`);
+    if (f.point) {
+      parts.push(`<circle cx="${X(f.point[1]).toFixed(1)}" cy="${Y(f.point[0]).toFixed(1)}" r="4" fill="#c92a2a"/>`);
+      // items separating seconds apart land within a few km of each other, so the labels are staggered
+      // rather than left to overprint
+      const dy = i % 2 ? 15 : -8;
+      parts.push(`<text x="${(X(f.point[1]) + 8).toFixed(1)}" y="${(Y(f.point[0]) + dy).toFixed(1)}" `
+        + `font-size="11" fill="#7f1d1d">${f.name.replace(" jettison", "")}</text>`);
+    }
+  });
+  const sx = X(hz.site.longitude_deg), sy = Y(hz.site.latitude_deg);
+  parts.push(`<circle cx="${sx.toFixed(1)}" cy="${sy.toFixed(1)}" r="5" fill="#0b7285"/>`);
+  parts.push(`<text x="${(sx + 8).toFixed(1)}" y="${(sy + 4).toFixed(1)}" font-size="11" fill="#0b4a5c">`
+    + `${(hz.site.name || "launch site")}</text>`);
+  host.append(el("div", {html:
+    `<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">${parts.join("")}</svg>`}));
+}
+
+async function hzExport(fmt) {
+  const body = {path: S.path, overrides: S.overrides, format: fmt};
+  if (S.hzAz !== null && S.hzAz !== undefined) body.azimuth_deg = S.hzAz;
+  if (S.hzSpeed !== null) body.sep_speed_frac = S.hzSpeed;
+  if (S.hzGamma !== null) body.sep_gamma_deg = S.hzGamma;
+  if (S.hzWidth !== null && S.hzWidth !== "") body.cross_half_width_m = S.hzWidth;
+  busy(true, "writing " + fmt.toUpperCase() + " …");
+  try {
+    const r = await fetch("/api/hazard_export", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                 body: JSON.stringify(body)});
+    if (!r.ok) { const j = await r.json().catch(() => ({})); throw Error(j.error || ("HTTP " + r.status)); }
+    const blob = await r.blob();
+    const cd = r.headers.get("content-disposition") || "";
+    const m = /filename="([^"]+)"/.exec(cd);
+    const a = el("a", {href: URL.createObjectURL(blob), download: m ? m[1] : ("hazard_areas." + fmt)});
+    document.body.append(a); a.click(); a.remove();
+  } catch (e) { showError(e); }
+  finally { busy(false); }
+}
+
+function renderDropzones(v) {
+  v.append(el("h2", {class: "sect", text: "Jettison drop zones"}));
+  v.append(el("p", {class: "note", style: NOTE, text:
+    "A conceptual-design estimate, not a range-safety product. There is no breakup model, no wind, no Coriolis "
+    + "force in the descent, and no probability-of-casualty analysis. The along-track extent is computed from "
+    + "declared separation-state uncertainties; the width of each box is an assumption, because a pitch-plane "
+    + "trajectory has no cross-range state at all. Do not use these areas to clear anything."}));
+
+  const bar = el("div", {class: "toolbar"});
+  const hz = S.hz;
+  const opts = (hz && hz.azimuth_options) || [];
+  if (opts.length > 1) {
+    const sel = el("select", {onchange: e => { S.hzAz = Number(e.target.value); fetchHazard(); }});
+    for (const o of opts)
+      sel.append(el("option", {value: o.azimuth_deg, text: o.label,
+                               selected: (S.hzAz !== null && Math.abs(S.hzAz - o.azimuth_deg) < 0.05) ? "" : null}));
+    bar.append(el("label", {class: "small", text: "Azimuth "}), sel);
+  } else if (opts.length === 1) {
+    bar.append(el("span", {class: "small", text: opts[0].label}));
+  }
+  const num = (lab, val, step, title) => {
+    const i = el("input", {type: "number", step: step, min: "0", style: "width:78px", title: title,
+                           value: val === null || val === undefined ? "" : val});
+    bar.append(el("label", {class: "small", title: title}, [document.createTextNode(lab + " "), i]));
+    return i;
+  };
+  const iSpeed = num("sep speed ±%", S.hzSpeed === null ? 3 : 100 * S.hzSpeed, "0.5",
+                     "Assumed separation-speed uncertainty. This is what sets the length of the boxes.");
+  const iGamma = num("γ ±deg", S.hzGamma === null ? 1 : S.hzGamma, "0.25",
+                     "Assumed flight-path-angle uncertainty at separation.");
+  const iWidth = num("half-width km", S.hzWidth === null ? "" : S.hzWidth / 1e3, "5",
+                     "Corridor half-width. Leave blank to use the Coriolis cross-range estimate as the floor.");
+  bar.append(el("button", {class: "primary", text: hz ? "Recompute" : "Compute", onclick: () => {
+    const pct = parseFloat(iSpeed.value), g = parseFloat(iGamma.value), w = parseFloat(iWidth.value);
+    S.hzSpeed = Number.isFinite(pct) && pct > 0 ? pct / 100 : null;
+    S.hzGamma = Number.isFinite(g) && g >= 0 ? g : null;
+    S.hzWidth = Number.isFinite(w) && w > 0 ? w * 1e3 : null;
+    fetchHazard();
+  }}));
+  bar.append(el("span", {class: "grow"}));
+  if (hz && (hz.features || []).some(f => f.ring)) {
+    bar.append(el("button", {text: "KML", title: "Google Earth", onclick: () => hzExport("kml")}));
+    bar.append(el("button", {text: "GeoJSON", title: "QGIS, web maps", onclick: () => hzExport("geojson")}));
+  }
+  v.append(bar);
+
+  if (!hz) {
+    v.append(el("p", {class: "small", text:
+      "Press Compute. The design is sized and flown first, because the impact points come from the state each "
+      + "item separates at - there is no path from the input file to a map that skips the trajectory."}));
+    return;
+  }
+  if (hz.error) {
+    v.append(el("p", {class: "note", style: NOTE, text: hz.error}));
+    if (hz.trajectory_status) v.append(el("p", {class: "small", text: "Trajectory: " + hz.trajectory_status}));
+    return;
+  }
+
+  const mapHost = el("div", {id: "hzmap", style: "border:1px solid var(--line);border-radius:4px;overflow:hidden"});
+  v.append(mapHost);
+  hzDraw(mapHost, hz);
+  v.append(el("p", {class: "small", text:
+    "Latitude/longitude grid, drawn here with no basemap so the tool keeps working offline. There is no "
+    + "coastline to check the boxes against, so for \"is this over land or water?\" export the KML and open "
+    + "it in Google Earth."}));
+
+  v.append(table(["Item", "Fate", "Downrange [km]", "Window [km]", "Latitude", "Longitude",
+                  "Fall [s]", "Impact speed [m/s]", "What sets the window"],
+    (hz.rows || []).map(r => [r.item, r.fate.replace("_", " "),
+      r.downrange_km === null ? "–" : fmt(r.downrange_km, 0),
+      r.window_km === null ? "–" : fmt(r.window_km, 0),
+      r.lat === null ? "–" : r.lat.toFixed(3), r.lon === null ? "–" : r.lon.toFixed(3),
+      r.fall_time_s === null ? "–" : fmt(r.fall_time_s, 0),
+      r.impact_v_mps === null ? "–" : fmt(r.impact_v_mps, 0), r.note]), [2, 3, 4, 5, 6, 7]));
+
+  for (const o of (hz.orbital || []))
+    v.append(el("p", {class: "small", text: "↑ " + o.note}));
+  for (const n of (hz.notes || []))
+    v.append(el("p", {class: "note", style: NOTE, text: n}));
+}
+
+/* ------------------------------------------------------------------ trade studies and comparison
+   Both size whole vehicles server-side, many of them, so neither depends on a run already being in the page.
+   The table comes back exactly as studies.to_rows builds it for the CLI and the report, so the browser never
+   forms a second opinion about which columns matter. */
+async function runStudy(what, body) {
+  busy(true, what === "trade" ? "running the sweep …" : "sizing each design …");
+  try {
+    const r = await fetch("/api/" + what, {method: "POST", headers: {"Content-Type": "application/json"},
+                                           body: JSON.stringify(body)});
+    const j = await r.json();
+    S.study = r.ok && !j.error ? j : {error: j.error || ("HTTP " + r.status)};
+  } catch (e) { S.study = {error: String(e.message || e)}; }
+  finally { busy(false); }
+  render();
+}
+
+function renderStudies(v) {
+  v.append(el("h2", {class: "sect", text: "Trade studies and design comparison"}));
+  v.append(el("p", {class: "small", text:
+    "A trade study sweeps declared parameters over one design; a comparison sizes several designs as they "
+    + "stand. Both size a complete vehicle per case, so a large sweep takes a while."}));
+
+  /* --- trade study */
+  const trades = S.meta_trades || [];
+  const bar1 = el("div", {class: "toolbar"});
+  bar1.append(el("span", {class: "small", text: "Trade study:"}));
+  if (!trades.length) {
+    bar1.append(el("span", {class: "small", text:
+      " no YAML with a trade_study: block found in examples/, designs/ or config/."}));
+  } else {
+    const sel = el("select", {});
+    for (const t of trades)
+      sel.append(el("option", {value: t.path, text: `${t.name} (${t.n_sweeps} swept parameter(s)) — ${t.path}`}));
+    bar1.append(sel);
+    bar1.append(el("button", {class: "primary", text: "Run sweep",
+                              onclick: () => runStudy("trade", {path: sel.value})}));
+  }
+  v.append(bar1);
+
+  /* --- comparison */
+  const bar2 = el("div", {class: "toolbar"});
+  bar2.append(el("span", {class: "small", text: "Compare designs:"}));
+  const box = el("select", {multiple: "", size: "6", style: "min-width:340px"});
+  for (const d of S.designs)
+    box.append(el("option", {value: d.path, text: `${d.name} — ${d.path}`,
+                             selected: d.path === S.path ? "" : null}));
+  bar2.append(box);
+  bar2.append(el("button", {class: "primary", text: "Compare", onclick: () => {
+    const picked = [...box.selectedOptions].map(o => o.value);
+    if (picked.length < 2) { showError(Error("pick at least two designs — ctrl-click or shift-click")); return; }
+    runStudy("compare", {paths: picked});
+  }}));
+  v.append(bar2);
+
+  const st = S.study;
+  if (!st) return;
+  if (st.error) { v.append(el("p", {class: "note", style: NOTE, text: st.error})); return; }
+
+  v.append(el("h3", {class: "sect", text: `${st.name} — ${st.n_ok} of ${st.n_cases} converged`}));
+  const numeric = st.header.map((_, i) => i).filter(i => i > 0 && i < st.header.length - 1);
+  v.append(table(st.header, st.rows.map(r => ({
+    cls: String(r[r.length - 1]).startsWith("ok") ? "" : "warn",
+    cells: r.map(x => x === null ? "–" : typeof x === "number"
+      ? (Math.abs(x) >= 1000 ? fmt(x, 0) : fmt(x, Math.abs(x) < 1 ? 4 : 2)) : String(x)),
+  })), numeric));
+  for (const n of (st.notes || [])) v.append(el("p", {class: "note", style: NOTE, text: n}));
+  v.append(el("p", {class: "small", text:
+    `Written beside this run as ${st.csv} and ${st.html}. A row that did not converge keeps its label and `
+    + `its reason instead of being dropped, so a sweep never looks smaller than it was.`}));
+}
+
+/* ------------------------------------------------------------------ sensitivity
+   One-at-a-time studies and the configuration comparison. Both ran in the CLI by default and reached the
+   Excel workbook, and neither had any way in from the browser - so "what is this design most sensitive to",
+   which is the question a preliminary model exists to answer, could only be asked from a terminal. */
+async function fetchSensitivity() {
+  busy(true, "sizing the design once per case …");
+  try {
+    S.sens = await api("/api/sensitivity", {method: "POST", headers: {"Content-Type": "application/json"},
+                                            body: JSON.stringify({path: S.path, overrides: S.overrides})});
+  } catch (e) { S.sens = {error: String(e.message || e)}; }
+  finally { busy(false); }
+  render();
+}
+
+function renderSensitivity(v) {
+  v.append(el("h2", {class: "sect", text: "Sensitivity"}));
+  v.append(el("p", {class: "small", text:
+    "Each case re-sizes the whole vehicle with one input changed, so the effect shown is the converged "
+    + "one and not a derivative. A case that does not converge keeps its row and its reason."}));
+  const bar = el("div", {class: "toolbar"});
+  bar.append(el("button", {class: "primary", text: S.sens ? "Run again" : "Run the studies",
+                           onclick: () => fetchSensitivity()}));
+  v.append(bar);
+  const s = S.sens;
+  if (!s) {
+    v.append(el("p", {class: "small", text:
+      "Not run yet. This sizes the vehicle dozens of times, so it takes appreciably longer than one run."}));
+    return;
+  }
+  if (s.error) { v.append(el("p", {class: "note", style: NOTE, text: s.error})); return; }
+
+  const cell = r => [r.case,
+                     r.glom_kg === null || r.glom_kg === undefined ? "–" : fmt(r.glom_kg, 0),
+                     r.delta_glom_pct === null || r.delta_glom_pct === undefined ? "–"
+                       : (r.delta_glom_pct >= 0 ? "+" : "") + fmt(r.delta_glom_pct, 1) + " %",
+                     r.length_m === null || r.length_m === undefined ? "–" : fmt(r.length_m, 1),
+                     r.payload_fraction === null || r.payload_fraction === undefined ? "–"
+                       : fmt(100 * r.payload_fraction, 2) + " %",
+                     r.feasible ? "ok" : (r.status || "infeasible")];
+  const byStudy = new Map();
+  for (const r of (s.studies || [])) {
+    if (!byStudy.has(r.study)) byStudy.set(r.study, []);
+    byStudy.get(r.study).push(r);
+  }
+  v.append(el("p", {class: "small", text:
+    `Baseline lift-off mass ${fmt(s.baseline_glom_kg, 0)} kg. Every Δ below is against that.`}));
+  for (const [study, rows] of byStudy) {
+    v.append(el("h3", {class: "sect", text: study}));
+    v.append(table(["Case", "Lift-off mass [kg]", "Δ vs baseline", "Length [m]", "Payload fraction", "Status"],
+      rows.map(r => ({cls: r.feasible ? "" : "warn", cells: cell(r)})), [1, 2, 3, 4]));
+  }
+  if ((s.configurations || []).length) {
+    v.append(el("h3", {class: "sect", text: "Configuration comparison"}));
+    v.append(table(["Configuration", "Lift-off mass [kg]", "Δ vs baseline", "Length [m]", "Payload fraction",
+                    "Status"],
+      s.configurations.map(r => ({cls: r.feasible ? "" : "warn", cells: cell(r)})), [1, 2, 3, 4]));
+  }
+}
+
+/* ------------------------------------------------------------------ architecture & families
+   Two questions the browser could not ask. (1) Pin this design's stages and its strap-on unit, change only
+   how many strap-ons are fitted, and what does it lift? That is how a launcher family is actually sold, and
+   the parallel burn is re-solved for each count rather than carried over from the reference design, which is
+   what makes an answer away from the design's own count mean anything (method M102). (2) Show a family as a
+   family: every variant sized on its own against its published lift-off mass, and optionally the reference
+   variant's core pinned and asked for each other variant's architecture. The two disagree in opposite
+   directions, and the caveat that ships with the numbers says why - a payload curve shown without its
+   measured bias reads as a capability. */
+async function fetchArchitecture(counts, sizeCore) {
+  busy(true, sizeCore ? "re-sizing a core for each booster count …" : "solving the payload for each count …");
+  try {
+    S.arch = await api("/api/architecture", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({path: S.path, overrides: S.overrides, counts: counts, size_core: !!sizeCore})});
+  } catch (e) { S.arch = {error: String(e.message || e)}; }
+  finally { busy(false); }
+  render();
+}
+
+async function fetchFamilies(name, pinned) {
+  busy(true, name ? "sizing every variant of the family …" : "looking for families …");
+  try {
+    const got = await api("/api/families", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name: name || null, pinned: !!pinned})});
+    if (name) S.family = got; else S.famList = got.families || [];
+  } catch (e) { if (name) S.family = {error: String(e.message || e)}; else S.famList = []; }
+  finally { busy(false); }
+  render();
+}
+
+function pctCell(x) { return (x === null || x === undefined) ? "–" : (x >= 0 ? "+" : "") + fmt(100 * x, 1) + " %"; }
+function kgCell(x) { return (x === null || x === undefined) ? "–" : fmt(x, 0); }
+
+function renderArchitecture(v) {
+  v.append(el("h2", {class: "sect", text: "Architecture & families"}));
+
+  /* ---- the pinned sweep on the design that is open ---- */
+  v.append(el("h3", {class: "sect", text: "Pin these stages, change the strap-on count"}));
+  v.append(el("p", {class: "small", text:
+    "Every stage keeps the loaded propellant, dry mass and effective Isp this design converged on, and the "
+    + "strap-on keeps its unit design — propellant, inert mass, mass flow, Isp, burn time. Only the count and "
+    + "the payload move, and the parallel burn is re-solved for each count. Re-size the core instead to ask "
+    + "the opposite question: given these boosters, what core would the sizing loop draw?"}));
+  const bar = el("div", {class: "toolbar"});
+  const inp = el("input", {type: "text", value: S.archCounts || "",
+                           placeholder: "counts, e.g. 0 1 2 3 4 — blank for 0 to twice the design's own",
+                           style: "min-width:19rem", oninput: e => { S.archCounts = e.target.value; }});
+  bar.append(inp);
+  const parse = () => {
+    const t = (S.archCounts || "").trim();
+    if (!t) return null;
+    const ns = t.split(/[\s,]+/).filter(x => x !== "").map(Number);
+    return ns.some(n => !Number.isFinite(n)) ? null : ns;
+  };
+  bar.append(el("button", {class: "primary", text: "Sweep the count", onclick: () => fetchArchitecture(parse(), false)}));
+  bar.append(el("button", {text: "Re-size the core instead", onclick: () => fetchArchitecture(parse(), true)}));
+  v.append(bar);
+
+  const a = S.arch;
+  if (!a) {
+    v.append(el("p", {class: "small", text:
+      "Not run yet. This sizes the design once and then solves a payload per count, so it takes longer than "
+      + "one run. A design with no strap-ons has no count to vary and will say so."}));
+  } else if (a.error) {
+    v.append(el("p", {class: "note", style: NOTE, text: a.error}));
+  } else if (a.mode === "size_core") {
+    v.append(el("p", {class: "small", text:
+      `Core re-sized for each count, payload held at ${fmt(a.payload_kg, 0)} kg. Nothing is pinned here, so `
+      + "none of the pinned-sweep bias applies — this is the sizing loop answering from scratch each time."}));
+    v.append(table(["boosters", "GLOM kg", "core propellant kg", "lift-off T/W", ""],
+      (a.rows || []).map(r => ({
+        cls: r.flyable ? "" : "warn",
+        cells: r.flyable
+          ? [String(r.n_boosters), kgCell(r.glom_kg), kgCell(r.core_prop_kg), fmt(r.liftoff_tw, 2),
+             r.is_reference ? "as designed" : ""]
+          : [String(r.n_boosters), "–", "–", "–", r.reason],
+      })), [1, 2, 3]));
+  } else {
+    const ref = a.reference || {};
+    v.append(el("p", {class: "small", text:
+      `As designed: ${ref.n_boosters} ${a.booster_label || "strap-on"}(s), ${fmt(ref.payload_kg, 0)} kg payload, `
+      + `${fmt(ref.glom_kg, 0)} kg lift-off mass.`}));
+    v.append(table(["boosters", "payload kg", "GLOM kg", "lift-off T/W", "vs design kg", ""],
+      (a.rows || []).map(r => ({
+        cls: r.flyable ? "" : "warn",
+        cells: r.flyable
+          ? [String(r.n_boosters), kgCell(r.payload_kg), kgCell(r.glom_kg), fmt(r.liftoff_tw, 2),
+             (r.payload_kg - ref.payload_kg >= 0 ? "+" : "") + fmt(r.payload_kg - ref.payload_kg, 0),
+             r.is_reference ? "as designed" : ""]
+          : [String(r.n_boosters), "–", "–", "–", "–", r.reason],
+      })), [1, 2, 3, 4]));
+    if (a.caveat) v.append(el("p", {class: "note", style: NOTE, text: a.caveat}));
+  }
+
+  /* ---- families ---- */
+  v.append(el("h3", {class: "sect", text: "Launch vehicle families"}));
+  v.append(el("p", {class: "small", text:
+    "A family is a folder with a family.yaml in it, under designs/families/, examples/families/ or "
+    + "validation/families/. Each variant loads the same base design and overrides only what makes it that "
+    + "variant — the booster count, the payload — so a shared core is shared as a fact rather than as several "
+    + "copies free to drift apart. Add your own by making a folder and writing the manifest; there is nothing "
+    + "to register. The format is in docs/USER_MANUAL.md 7.17c."}));
+  const fbar = el("div", {class: "toolbar"});
+  fbar.append(el("button", {text: S.famList ? "Refresh the list" : "Find families",
+                            onclick: () => fetchFamilies(null, false)}));
+  if (S.famList && S.famList.length) {
+    const sel = el("select", {onchange: e => { S.famPick = e.target.value; }});
+    for (const f of S.famList) sel.append(el("option", {value: f.slug, text: `${f.name}  (${f.variants.length} variants)`}));
+    S.famPick = S.famPick || S.famList[0].slug;
+    sel.value = S.famPick;
+    fbar.append(sel);
+    fbar.append(el("button", {class: "primary", text: "Size the family",
+                              onclick: () => fetchFamilies(S.famPick, false)}));
+    fbar.append(el("button", {text: "…and pin the reference core",
+                              onclick: () => fetchFamilies(S.famPick, true)}));
+  }
+  v.append(fbar);
+
+  if (S.famList && !S.famList.length) {
+    v.append(el("p", {class: "small", text: "No families found. Make a folder with a family.yaml in it."}));
+  }
+  const f = S.family;
+  if (!f) return;
+  if (f.error) { v.append(el("p", {class: "note", style: NOTE, text: f.error})); return; }
+  v.append(el("h3", {class: "sect", text: `${f.name} — ${(f.sized || []).length} variants, base ${f.base}`}));
+  if (f.note) v.append(el("p", {class: "small", text: f.note}));
+  v.append(el("p", {class: "small", text: "Each variant sized on its own, delta-v split re-optimised:"}));
+  v.append(table(["variant", "tool GLOM kg", "published kg", "error", "length m", "T/W", ""],
+    (f.sized || []).map(r => ({
+      cls: r.error ? "warn" : "",
+      cells: r.error
+        ? [r.label, "–", kgCell(r.published_glom_kg), "–", "–", "–", r.error]
+        : [r.label, kgCell(r.glom_kg), kgCell(r.published_glom_kg), pctCell(r.glom_err),
+           fmt(r.length_m, 1), fmt(r.liftoff_tw, 2), r.is_reference ? "reference" : ""],
+    })), [1, 2, 3, 4, 5]));
+  if ((f.pinned || []).length) {
+    v.append(el("p", {class: "small", text:
+      `Reference variant (${f.reference}) pinned, booster count changed to each variant's:`}));
+    v.append(table(["variant", "boosters", "pinned payload kg", "published kg", "error", "T/W", ""],
+      f.pinned.map(r => ({
+        cls: (r.flyable && r.payload_kg !== null) ? "" : "warn",
+        cells: (r.flyable && r.payload_kg !== null)
+          ? [r.label, String(r.n_boosters), kgCell(r.payload_kg), kgCell(r.published_payload_kg),
+             pctCell(r.payload_err), fmt(r.liftoff_tw, 2), r.is_reference ? "reference" : ""]
+          : [r.label, String(r.n_boosters), "–", kgCell(r.published_payload_kg), "–", "–", r.reason],
+      })), [2, 3, 4, 5]));
+  }
+  if (f.caveat) v.append(el("p", {class: "note", style: NOTE, text: f.caveat}));
+}
+
+function render() {
+  const v = $("#view"); v.textContent = "";
+  // Drop zones, trade studies, comparison and sensitivity come before the "nothing sized yet" guard on
+  // purpose: the server sizes whole vehicles itself to answer them, so none needs a run in the page first.
+  if (S.tab === "dropzones") return renderDropzones(v);
+  if (S.tab === "studies") return renderStudies(v);
+  if (S.tab === "sensitivity") return renderSensitivity(v);
+  if (S.tab === "architecture") return renderArchitecture(v);
+  if (!S.res) {
+    const d = S.meta.description || "";
+    v.append(el("h2", {class: "sect", text: S.meta.name || "No configuration loaded"}));
+    if (d) v.append(el("p", {class: "small", text: d}));
+    v.append(el("div", {class: "msg info"}, [
+      el("b", {text: "Ready. "}),
+      el("span", {text: "Change what you like on the left, then press Size vehicle. Pick analyses first if you want loads, structure or cost."})]));
+    return;
+  }
+  const r = S.res, base = S.baseline;
+  const delta = (now, was, nd, invert) => {
+    if (!was || !Number.isFinite(was) || was === 0) return "";
+    const p = 100 * (now - was) / was;
+    if (Math.abs(p) < 0.005) return "";
+    const good = invert ? p > 0 : p < 0;
+    return `<em class="${good ? "dn" : "up"}">${p > 0 ? "+" : ""}${p.toFixed(2)} %</em>`;
+  };
+  if (S.tab === "summary") {
+    v.append(el("div", {class: "msg " + (r.converged ? "ok" : "bad")},
+      [el("b", {text: r.converged ? "Converged. " : "Did not converge. "}),
+       el("span", {text: r.converged ? `${r.iterations} iterations, residual ${r.residual.toExponential(2)}. Achieved Δv ${fmt(r.dv_achieved_mps)} m/s against ${fmt(r.dv_required_mps)} m/s required.`
+                                     : r.status})]));
+    // An analysis that ran and had nothing to say gets no tab. Saying so beats leaving the user to wonder
+    // whether their tick was ignored.
+    const empty = r.studies_empty || [];
+    if (empty.length) {
+      const labels = empty.map(k => ((S.studyDefs.find(d => d.key === k) || {}).label) || k);
+      v.append(el("p", {class: "note", style: NOTE, text:
+        `Asked for but produced nothing on this vehicle: ${labels.join(", ")}. `
+        + `An analysis with nothing to report gets no tab - internal ballistics needs a solid motor, for `
+        + `instance - so this is not an error, but it is not a result either.`}));
+    }
+    v.append(kpis([
+      ["Lift-off mass", fmt(r.glom_kg) + " kg", base ? delta(r.glom_kg, base.glom_kg) : ""],
+      ["Payload", fmt(r.payload_kg) + " kg", ""],
+      ["Payload fraction", (100 * r.payload_fraction).toFixed(2) + " %", base ? delta(r.payload_fraction, base.payload_fraction, 2, true) : ""],
+      ["Length", r.length_m.toFixed(2) + " m", base ? delta(r.length_m, base.length_m) : ""],
+      ["Max diameter", r.max_diameter_m.toFixed(2) + " m", ""],
+      ["Lift-off thrust/weight", r.liftoff_tw.toFixed(2), ""],
+      ["Δv required", fmt(r.dv_required_mps) + " m/s", ""],
+    ]));
+    const ss = r.study_summary || {};
+    if (Object.keys(ss).length) {
+      v.append(el("h3", {class: "sect", text: "What governs this design"}));
+      const rows = [];
+      /* Every number here can legitimately be absent. A quantity the model could not compute arrives as null
+         (NaN and infinity are not JSON), and calling .toFixed on that used to throw and lose the whole
+         summary - which is what made Saturn V look like it had failed to size when it had not. fmt() renders
+         a missing value as a dash. */
+      if (ss.loads) rows.push(["Governing bending moment", `${fmt(ss.loads.moment_kNm)} kN·m`, `z = ${fmt(ss.loads.z_m, 1)} m, ${ss.loads.governing}`]);
+      if (ss.structure) rows.push(["Thickest shell required", `${fmt(ss.structure.thickest_mm, 2)} mm`, `${ss.structure.shell}, sized by ${ss.structure.driver}`]);
+      if (ss.structure && ss.structure.mass_ratio) rows.push(["Monocoque vs relationship mass", `${fmt(ss.structure.mass_ratio, 2)} ×`, "sized shells against the mass-estimating relationships"]);
+      if (ss.trajectory && ss.trajectory.orbit && ss.trajectory.orbit.checked)
+        rows.push(["Orbit reached", ORBIT_WORD[ss.trajectory.orbit.verdict] || "", "from the flown ascent"]);
+      if (ss.trajectory && ss.trajectory.max_q_kPa) rows.push(["Maximum dynamic pressure", `${fmt(ss.trajectory.max_q_kPa, 1)} kPa`, "from the flown ascent"]);
+      if (ss.control) rows.push(["Worst control authority", fmt(ss.control.controllability, 2),
+        `t = ${fmt(ss.control.t_s, 0)} s, trim ${fmt(ss.control.trim_deg, 2)}°`
+        + (ss.control.trim_note ? ` — ${ss.control.trim_note}` : "")]);
+      if (ss.payload_env) rows.push(["Payload load factors", `${fmt(ss.payload_env.axial_g, 1)} g axial, ${fmt(ss.payload_env.lateral_g, 1)} g lateral`, ss.payload_env.event]);
+      if (ss.cost) rows.push(["Development cost", "$" + fmt(ss.cost.development_usd / 1e6) + " M", `${ss.cost.year} dollars`]);
+      if (rows.length) v.append(table(["What governs", "Value", "Where"], rows, [1]));
+    } else {
+      v.append(el("p", {class: "small", text: "Pick analyses in the toolbar to see what governs this design — loads, structure, trajectory and cost."}));
+    }
+    const bad = r.issues.filter(i => i.level !== "INFO");
+    if (bad.length) {
+      v.append(el("h3", {class: "sect", text: "Checks"}));
+      v.append(table(["Level", "Code", "Message"],
+        bad.map(i => ({cls: "lvl-" + i.level, cells: [i.level, i.code, i.message]}))));
+    }
+    v.append(el("div", {class: "row", style: "display:flex;gap:7px;flex-wrap:wrap;margin-top:6px"}, [
+      el("button", {text: "Set as baseline", title: "Freeze this result to compare later runs against",
+                    onclick: () => { S.baseline = r; render(); }}),
+      el("button", {text: "Download report", onclick: () => location.href = `/api/report?token=${r.token}&download=1`}),
+      el("button", {text: "Download workbook", onclick: () => location.href = `/api/workbook?token=${r.token}`}),
+      ...cadButtons(r),
+    ]));
+    v.append(cadNote());
+  }
+  else if (S.tab === "budget") {
+    v.append(el("h2", {class: "sect", text: "Velocity budget"}));
+    /* each bar is that line's size against the largest line of the budget; green is a credit */
+    const max = Math.max(...r.budget.map(b => Math.abs(b.value_mps)), 1);
+    const bars = el("div", {class: "bars"});
+    for (const b of r.budget) {
+      bars.append(el("div", {class: "bar" + (b.value_mps < 0 ? " neg" : "")}, [
+        el("span", {class: "nm", text: b.name, title: b.source}),
+        el("span", {class: "tr"}, [el("span", {class: "fl", style: `width:${100 * Math.abs(b.value_mps) / max}%`})]),
+        el("span", {class: "vl", text: fmt(b.value_mps, 1) + " m/s"})]));
+    }
+    v.append(bars);
+    v.append(table(["Line", "m/s", "Category", "In total", "Source"],
+      r.budget.map(b => [b.name, fmt(b.value_mps, 1), b.category, b.in_total ? "yes" : "no", b.source]), [1]));
+    v.append(table(["", "m/s"], [{cls: "sum", cells: ["Total required", fmt(r.budget_total, 1)]}], [1]));
+  }
+  else if (S.tab === "stages") {
+    v.append(el("h2", {class: "sect", text: "Stages"}));
+    v.append(table(["#", "Name", "Type", "Δv [m/s]", "Isp [s]", "Propellant [kg]", "Dry [kg]", "s", "Burn [s]", "T/W<sub>0</sub>", "a<sub>max</sub> [g]", "Length [m]"],
+      r.stages.map(s => [s.index, s.name, s.type, fmt(s.dv_mps), fmt(s.isp_eff_s, 1), fmt(s.m_prop_loaded_kg),
+        fmt(s.m_dry_kg), s.s.toFixed(4), fmt(s.burn_time_s, 1), s.tw_ignition.toFixed(2),
+        s.accel_max_g.toFixed(2), s.length_m.toFixed(2)]), [0, 3, 4, 5, 6, 7, 8, 9, 10, 11]));
+    for (const s of r.stages) {
+      v.append(el("h3", {class: "sect", text: `Stage ${s.index} dry mass`}));
+      const tot = Object.values(s.components).reduce((a, b) => a + b, 0) || 1;
+      v.append(table(["Component", "kg", "% of dry"],
+        Object.entries(s.components).map(([k, m]) => [k, fmt(m, 1), (100 * m / tot).toFixed(1)]), [1, 2]));
+    }
+  }
+  else if (S.tab === "mass") {
+    v.append(el("h2", {class: "sect", text: "Mass ledger"}));
+    v.append(table(["Stage", "Group", "Item", "kg", "z [m]", "Source"],
+      r.ledger.map(i => [i.stage || "–", i.group, i.name, fmt(i.mass_kg, 1), i.z_m.toFixed(2), i.source]), [3, 4]));
+    if (r.events.length) {
+      v.append(el("h3", {class: "sect", text: "Mass properties at flight events"}));
+      v.append(table(["Event", "Mass [kg]", "CM z [m]", "CM/L", "Roll inertia", "Pitch inertia"],
+        r.events.map(e => [e.event, fmt(e.mass_kg), e.z_cm_m.toFixed(2), e.z_cm_over_L.toFixed(3),
+          fmt(e.J_roll), fmt(e.J_pitch)]), [1, 2, 3, 4, 5]));
+    }
+  }
+  else if (S.tab === "drawings") {
+    v.append(el("h2", {class: "sect", text: "Drawings"}));
+    v.append(fig("vehicle_png"));
+    for (const s of r.stages) v.append(fig(`stage${s.index}_png`));
+    v.append(fig("mass_distribution_png"));
+  }
+  else if (S.tab === "geometry") {
+    v.append(el("h2", {class: "sect", text: "Geometry"}));
+    v.append(table(["Stage", "Kind", "Name", "z bottom [m]", "z top [m]", "Length [m]", "⌀ bottom [m]", "⌀ top [m]"],
+      r.segments.map(s => [s.stage || "–", s.kind, s.name, s.z0.toFixed(2), s.z1.toFixed(2),
+        s.length.toFixed(2), s.d_bot.toFixed(2), s.d_top.toFixed(2)]), [3, 4, 5, 6, 7]));
+  }
+  else if (S.tab === "checks") {
+    v.append(el("h2", {class: "sect", text: "Checks and warnings"}));
+    if (!r.issues.length) { v.append(el("p", {class: "small", text: "Nothing to report."})); }
+    else {
+      /* A check that knows which input it is about should take you there. The same `field` and `options`
+         a hard refusal uses now ride along on every issue, so a WARNING is as actionable as an ERROR:
+         before this, the list was a wall of text and finding the input it meant was the reader's problem. */
+      v.append(table(["Level", "Code", "Message"], r.issues.map(i => {
+        const msg = el("div", {}, [el("div", {text: i.message})]);
+        const canGo = i.field && (SHAPE_ROWS.includes(i.field) || S.items.some(x => x.path === i.field));
+        const acts = [];
+        if (canGo) {
+          acts.push(el("button", {class: "small", text: "Go to " + (SHAPE_LABELS[i.field] ||
+            ((S.items.find(x => x.path === i.field) || {}).label || i.field)),
+            onclick: () => gotoField(i.field)}));
+        }
+        for (const o of (i.options || [])) {
+          const apply = o.path && o.value !== null && o.value !== undefined
+                        && S.items.some(x => x.path === o.path);
+          if (!apply) continue;
+          acts.push(el("button", {class: "small", text: o.label, title: o.note || "",
+            onclick: () => {
+              S.overrides[o.path] = o.value; renderInputs(); countOverrides(); gotoField(o.path);
+              busy(false, `${o.label}. Press Size vehicle to try again.`);
+            }}));
+        }
+        if (acts.length) msg.append(el("div", {style: "margin-top:5px;display:flex;gap:6px;flex-wrap:wrap"}, acts));
+        return {cls: "lvl-" + i.level, cells: [i.level, i.code, msg]};
+      })));
+    }
+  }
+  else if (S.tab === "model") {
+    /* How much the MODEL is worth, as opposed to what it says about this vehicle: the engine-cluster
+       reliability of the sized stages, and the two relation-vs-reality measurements that back the
+       library. Fetched lazily, because none of it changes until the vehicle does. */
+    v.append(el("h2", {class: "sect", text: "Model checks"}));
+    v.append(el("p", {class: "small", text:
+      "What the relations behind this design are worth, measured against published hardware rather than "
+      + "assumed. Nothing here changes the vehicle above."}));
+    const d = (S.modelChecksFor === r.token) ? S.modelChecks : null;
+    if (!d) {
+      v.append(el("p", {class: "small", text: "Measuring…"}));
+      if (S.modelChecksFor !== r.token) {
+        S.modelChecksFor = r.token;
+        api(`/api/model_checks?token=${r.token}`).then(x => { S.modelChecks = x; render(); })
+                                                 .catch(e => { S.modelChecks = {error: String(e)}; render(); });
+      }
+    } else if (d.error) {
+      v.append(el("p", {class: "small", text: "Could not measure: " + d.error}));
+    } else {
+      /* --- engine-out and cluster reliability (R24) */
+      const rel = d.reliability;
+      if (rel && rel.stages) {
+        v.append(el("h3", {class: "sect", text: "Engine-out and cluster reliability"}));
+        v.append(el("p", {class: "small", text:
+          `Per-engine reliability ${rel.r_engine.toFixed(5)} — ${rel.source}. Book Sec. 15.2.6.`}));
+        v.append(table(["Stage", "Engines", "T/W nominal", "T/W one out", "Engine-out",
+                        "All must work", "One-out tolerant", "Credited"],
+          rel.stages.map(s => [String(s.stage), String(s.n_engines), s.tw_nominal.toFixed(2),
+            s.tw_one_out === null ? "–" : s.tw_one_out.toFixed(2),
+            s.n_engines < 2 ? "single engine" : (s.can_lose_an_engine ? "can lose one" : "CANNOT lose one"),
+            (100 * s.all_must_work).toFixed(3) + " %",
+            s.one_out_tolerant === null ? "–" : (100 * s.one_out_tolerant).toFixed(3) + " %",
+            (100 * s.r_cluster).toFixed(3) + " %"]), [1, 2, 3, 5, 6, 7]));
+        if (rel.propulsion_reliability !== null && rel.propulsion_reliability !== undefined) {
+          v.append(el("p", {class: "small", html: "Propulsion reliability over all liquid stages, as "
+            + `credited: <b>${(100 * rel.propulsion_reliability).toFixed(3)} %</b>.`}));
+        }
+        v.append(el("p", {class: "note", style: NOTE, text: rel.independence_caveat}));
+      }
+      /* --- the engine-mass relation against real engines (R20) */
+      const em = d.engine_mer;
+      if (em) {
+        v.append(el("h3", {class: "sect", text: "Engine-mass relation against real engines"}));
+        v.append(el("p", {class: "small", text:
+          `${em.n} engines publish a dry mass. Median error ${(100 * em.median).toFixed(0)} %, `
+          + `spread ${(100 * em.sd).toFixed(0)} %, ${em.n_light} of ${em.n} come out light.`}));
+        v.append(table(["Engine", "Vacuum thrust [kN]", "Area ratio", "Published [kg]", "Relation [kg]", "Error"],
+          em.rows.map(x => ({cls: Math.abs(x.error) > 0.4 ? "lvl-WARNING" : "",
+            cells: [x.engine, (x.thrust_vac_N / 1e3).toFixed(0), x.expansion_ratio.toFixed(1),
+                    x.published_kg.toFixed(0), x.mer_kg.toFixed(0),
+                    (x.error >= 0 ? "+" : "") + (100 * x.error).toFixed(0) + " %"]})), [1, 2, 3, 4, 5]));
+        v.append(el("p", {class: "note", style: NOTE, text: em.verdict}));
+      }
+      /* --- the published solid-stage relations (R18) */
+      const sr = d.solid_relations;
+      if (sr && sr.length) {
+        v.append(el("h3", {class: "sect", text: "Solid-stage inert relations"}));
+        v.append(el("p", {class: "small", text:
+          `Measured against ${d.solid_dataset_n} flown solid stages. Pick one on a solid stage under `
+          + `"Casing mass method"; each predicts a WHOLE stage, so the component build-up is switched off.`}));
+        v.append(table(["Relation", "Case", "Predicts", "Our mean error", "Our mean |error|", "Fitted over"],
+          sr.map(x => [x.label, x.case, x.predicts,
+            x.our_mpe === null ? "–" : (x.our_mpe >= 0 ? "+" : "") + (100 * x.our_mpe).toFixed(0) + " %",
+            x.our_mape === null ? "–" : (100 * x.our_mape).toFixed(0) + " %",
+            String(x.n) + " stages"]), [3, 4]));
+        v.append(el("p", {class: "note", style: NOTE, text:
+          "Error columns are this tool's own measurement of each published relation against the same "
+          + "34 stages, not the figure its source reports. The NASA size-dependent rows come out light "
+          + "against flown hardware, which is why they are offered but not recommended as a default."}));
+      }
+    }
+  }
+  else if (S.tab === "report") {
+    v.append(el("h2", {class: "sect", text: "Design report"}));
+    const bar = el("div", {class: "toolbar"});
+    bar.append(el("span", {class: "small", text: "The full document, with every section for the analyses that ran."}));
+    bar.append(el("span", {class: "grow"}));
+    bar.append(el("button", {text: "Download PDF",
+      title: "Converts this same HTML with Chrome, Edge or wkhtmltopdf, if one of them is on this machine",
+      onclick: async () => {
+        busy(true, "converting the report …");
+        try {
+          const rr = await fetch("/api/report_pdf", {method: "POST", headers: {"Content-Type": "application/json"},
+                                                     body: JSON.stringify({token: r.token})});
+          if (!rr.ok) { const j = await rr.json().catch(() => ({})); throw Error(j.error || ("HTTP " + rr.status)); }
+          const blob = await rr.blob();
+          const a = el("a", {href: URL.createObjectURL(blob), download: "design_report.pdf"});
+          document.body.append(a); a.click(); a.remove();
+        } catch (e) { showError(e); }
+        finally { busy(false); }
+      }}));
+    v.append(bar);
+    v.append(el("iframe", {src: `/api/report?token=${r.token}`, style: "width:100%;height:72vh;border:1px solid var(--line);background:#fff"}));
+  }
+  else {
+    const def = STUDY_TABS[S.tab];
+    if (def) {
+      v.append(el("h2", {class: "sect", text: def[1]}));
+      const ss = (r.study_summary || {})[S.tab];
+      /* An analysis that did not converge is not a result, and this tab used to present one as though it
+         were: a trajectory that flew up and hit the ground came back as "burnout altitude -0.22 km" and
+         "max-q 4,833 kPa" under four authoritative-looking charts, with "Converged: false" as the first of
+         four unremarkable table rows. Say it first, say why, and say what the numbers below actually are. */
+      if (ss && ss.converged === false) {
+        /* Two different things, which must not read the same. `attempted === false` means this model cannot
+           represent the mission's ascent at all (GTO and above are flown burn-coast-restart in reality), so
+           there is nothing below to diagnose and nothing failed about the vehicle. A failed ATTEMPT is a
+           finding about the vehicle; an unattempted one is a statement about the model. */
+        const notAttempted = ss.attempted === false;
+        const box = el("div", {class: notAttempted ? "msg" : "msg bad"}, notAttempted ? [
+          el("b", {text: "Ascent not simulated for this mission class. "}),
+          el("span", {text: "Nothing failed here and there are no figures below: this model flies every "
+                            + "stage continuously, so it cannot represent a mission the real vehicle flies "
+                            + "with a coast and a restart. The mass and Δv results are unaffected."})] : [
+          el("b", {text: "This analysis did not converge. "}),
+          el("span", {text: "The figures and charts below describe the attempt that failed, not this "
+                            + "vehicle — read them as a diagnosis, not as a result."})]);
+        if (ss.status) box.append(el("div", {class: "small", style: "margin-top:6px",
+                                            text: (notAttempted ? "" : "Why: ") + ss.status}));
+        const missing = (r.studies_empty || []).filter(k => STUDY_TABS[k]);
+        if (missing.length) {
+          box.append(el("div", {class: "small", style: "margin-top:4px",
+            text: "Analyses that need a converged ascent produced nothing as a result: "
+                  + missing.map(k => STUDY_TABS[k][1]).join(", ") + "."}));
+        }
+        v.append(box);
+      }
+      if (S.tab === "trajectory" && ss && ss.orbit) v.append(orbitCheck(ss.orbit));
+      if (ss) {
+        const rows = Object.entries(ss).filter(([, x]) => x !== null && x !== undefined && typeof x !== "object")
+          .map(([k, x]) => [SUMMARY_LABELS[k] || k.replace(/_/g, " "),
+                            typeof x === "number" ? fmt(x, Math.abs(x) < 100 ? 2 : 0)
+                              : typeof x === "boolean" ? (x ? "yes" : "no") : String(x)]);
+        if (rows.length) v.append(table(["Quantity", "Value"], rows, [1]));
+        if (ss.profiles && ss.profiles.length)
+          v.append(el("p", {class: "small", text: "Wind profiles flown: " + ss.profiles.join(", ")}));
+      }
+      if (def[2] && (r.figures || []).includes(def[2])) v.append(fig(def[2]));
+      if (S.tab === "loads" && (r.figures || []).includes("wind_png")) v.append(fig("wind_png"));
+      if (S.tab === "trajectory" && ss && ss.timeline && ss.timeline.length) v.append(timelineTable(ss.timeline));
+      if (S.tab === "trajectory" && ss && ss.drag_rows && ss.drag_rows.length) v.append(dragTable(ss));
+      v.append(el("p", {class: "small", text: "The Report tab carries this analysis in full, with its assumptions and limitations."}));
+    }
+  }
+}
+
+/* ------------------------------------------------------------------ dialogs */
+function renderPick() {
+  const host = $("#pick"); host.textContent = "";
+  const f = $("#pickFilter").value.trim().toLowerCase();
+  const groups = new Map();
+  for (const d of S.designs) {
+    if (f && !(d.name.toLowerCase().includes(f) || d.path.toLowerCase().includes(f))) continue;
+    if (!groups.has(d.group_label)) groups.set(d.group_label, []);
+    groups.get(d.group_label).push(d);
+  }
+  if (!groups.size) { host.append(el("p", {class: "small", text: "Nothing matches."})); return; }
+  for (const [label, list] of groups) {
+    host.append(el("div", {class: "g", text: label}));
+    for (const d of list)
+      host.append(el("button", {onclick: () => { $("#dlgOpen").close(); loadDesign(d.path); }},
+        [el("span", {text: d.name}), el("span", {class: "ds", text: d.description || d.path})]));
+  }
+}
+
+function renderStudyHints() {
+  const n = $("#studyHint");
+  if (!n) return;
+  const picked = [...S.studies];
+  n.textContent = picked.length
+    ? `${picked.length} selected. Dependencies are added automatically, so the run may include more.`
+    : "Nothing selected: the vehicle is still sized, but no analysis tabs or report sections are produced.";
+}
+
+async function init() {
+  const d = await api("/api/designs");
+  S.designs = d.designs; S.studyDefs = d.studies || [];
+  S.meta_trades = d.trade_studies || [];
+  try { S.cad = await api("/api/cad_formats"); } catch (e) { S.cad = null; }
+  S.combinations = d.combinations || null;
+  S.launchSites = d.launch_sites || null;
+  S.engines = d.engines || null;
+  const sl = $("#studyList"); sl.textContent = "";
+  /* Eleven checkboxes wrapped across a flex row read as noise. Grouped into three short columns by what
+     the analysis is FOR, with each dependency spelled out, the same list becomes scannable. */
+  const order = d.study_groups && d.study_groups.length
+    ? d.study_groups : [...new Set(S.studyDefs.map(s => s.group || "Other"))];
+  const labelOf = k => (S.studyDefs.find(x => x.key === k) || {}).label || k;
+  for (const g of order) {
+    const members = S.studyDefs.filter(s => (s.group || "Other") === g);
+    if (!members.length) continue;
+    const col = el("div", {class: "studygroup"}, [el("h4", {text: g})]);
+    for (const s of members) {
+      const cb = el("input", {type: "checkbox", onchange: e => {
+        e.target.checked ? S.studies.add(s.key) : S.studies.delete(s.key); renderStudyHints(); }});
+      cb.checked = S.studies.has(s.key);
+      col.append(el("label", {title: s.needs ? "Needs " + labelOf(s.needs) + ", which is run for you" : ""},
+        [cb, el("span", {class: "nm", text: s.label})].concat(
+          s.needs ? [el("span", {class: "dep", text: "runs " + labelOf(s.needs) + " first"})] : [])));
+    }
+    sl.append(col);
+  }
+  renderStudyHints();
+  await loadDesign(S.designs.some(x => x.path === "config/default_design.yaml") ? "config/default_design.yaml" : S.designs[0].path);
+}
+
+$("#run").onclick = size;
+$("#filter").oninput = renderInputs;
+$("#onlychanged").onchange = renderInputs;
+$("#reset").onclick = () => { S.overrides = {}; S.overrideSources = {}; renderInputs(); countOverrides(); };
+$("#open").onclick = () => { renderPick(); $("#dlgOpen").showModal(); };
+$("#openCancel").onclick = () => $("#dlgOpen").close();
+$("#pickFilter").oninput = renderPick;
+$("#studiesBtn").onclick = () => $("#dlgStudies").showModal();
+$("#studiesClose").onclick = () => $("#dlgStudies").close();
+$("#saveCancel").onclick = () => $("#dlgSave").close();
+
+/* ---------------------------------------------------------------- New, Save, Save as
+   Save means "write this back where it came from"; Save as means "and now work on a copy". The one thing
+   neither may do is rewrite a shipped file - config/, examples/ and validation/ are reference material, and a
+   check case quietly edited is a check case that no longer checks anything. So Save on one of those behaves
+   as Save as, and the header says which of the two it currently is. */
+function askSave(prefill) {
+  $("#saveName").value = prefill || $("#name").value || S.meta.name || "";
+  $("#saveDesc").value = S.meta.description || "";
+  const n = Object.keys(S.overrides).length;
+  $("#saveNote").textContent = n ? `${n} changed value${n === 1 ? "" : "s"} will be saved as yours.`
+                                 : "No values changed; this saves a copy of the file as it stands.";
+  S.replaceOk = false;
+  $("#dlgSave").showModal();
+}
+
+async function writeDesign(body, onErr) {
+  const r = await fetch("/api/save", {method: "POST", headers: {"Content-Type": "application/json"},
+                                      body: JSON.stringify(body)});
+  const out = await r.json().catch(() => ({error: "the server did not answer in JSON"}));
+  if (r.status === 409 && out.exists) { onErr(out, true); return null; }
+  if (!r.ok) { onErr(out, false); return null; }
+  return out;
+}
+
+$("#new").onclick = async () => {
+  /* A new design starts from the shipped default - that is where the structure, the units and the book's own
+     coefficients live - and then clears the brief: what you are launching, to where, from where, and how big
+     a rocket. Nothing the METHOD owns is cleared, because a blank MER helps nobody. */
+  await loadDesign("config/default_design.yaml");
+  const byPath = {};
+  for (const it of S.items) byPath[it.path] = it;
+  let n = 0;
+  for (const d of (S.newDesign.blank || [])) {
+    if (!byPath[d.path]) continue;
+    S.overrides[d.path] = null;
+    n++;
+  }
+  for (const d of (S.newDesign.blank || []).concat(S.newDesign.flag || [])) {
+    if (byPath[d.path]) S.rowNotes[d.path] = d.why;
+  }
+  /* Open every section that now holds an empty field. A row highlighted inside a folded section is a row
+     nobody sees: the user would have to find it to know it was waiting for them. */
+  for (const d of (S.newDesign.blank || [])) {
+    const sec = byPath[d.path] && byPath[d.path].section;
+    if (sec && !S.openSections.includes(sec)) S.openSections.push(sec);
+  }
+  S.meta = {name: "", description: ""};
+  $("#name").value = "";
+  /* The shipped default is two-stage, so a new design starts two-stage. That is a starting point and not an
+     assumption the user is stuck with, and saying so is the difference between a default and a limitation.
+     Set before the render, because gotoField below re-renders and then focuses: re-rendering after it would
+     throw away the focus and the scroll it just did. */
+  S.stageNote = "A new design starts with two stages because the shipped default has two. Change this first"
+                + " if your vehicle has a different number - the stage fields follow.";
+  renderInputs(); countOverrides();
+  const miss = attentionPaths();
+  if (miss.length) gotoField(miss[0].path);
+  busy(false, `New design: ${n} field${n === 1 ? "" : "s"} cleared for you to fill in.`
+              + ` Starting from ${S.stageCount ? S.stageCount.n : 2} stages - change that at the top if you`
+              + " need more.");
+};
+
+$("#attn").onclick = () => {
+  const miss = attentionPaths();
+  if (miss.length) gotoField(miss[0].path);
+};
+
+$("#save").onclick = async () => {
+  if (!S.writable) { askSave(); return; }                 // shipped file: Save has to become Save as
+  busy(true, "saving");
+  const out = await writeDesign({path: S.path, overrides: S.overrides, target: S.path,
+                                 override_sources: S.overrideSources,
+                                 name: $("#name").value.trim() || S.meta.name || "",
+                                 description: S.meta.description || ""},
+                                (e) => { busy(false, ""); showError(new Error(e.error || "save failed")); });
+  if (!out) return;
+  await loadDesign(out.path);
+  busy(false, "Saved to " + out.path);
+};
+
+$("#saveAs").onclick = () => askSave();
+
+$("#saveGo").onclick = async () => {
+  const name = $("#saveName").value.trim();
+  if (!name) { $("#saveNote").textContent = "Give it a name first."; return; }
+  const out = await writeDesign(
+    {path: S.path, overrides: S.overrides, override_sources: S.overrideSources,
+     name, description: $("#saveDesc").value.trim(),
+     replace: !!S.replaceOk},
+    (e, exists) => {
+      if (exists) {
+        S.replaceOk = true;
+        $("#saveNote").textContent = `${e.path} already exists. Press Save again to replace it, ` +
+                                     "or change the name.";
+      } else {
+        $("#saveNote").textContent = e.error || "save failed";
+      }
+    });
+  if (!out) return;
+  $("#dlgSave").close();
+  const d = await api("/api/designs"); S.designs = d.designs; S.meta_trades = d.trade_studies || [];
+  await loadDesign(out.path);
+  busy(false, "Saved to " + out.path);
+};
+
+/* resizable split */
+(() => {
+  let drag = false;
+  $("#drag").addEventListener("mousedown", e => { drag = true; e.preventDefault(); });
+  addEventListener("mousemove", e => { if (drag) $("#left").style.width = Math.max(320, Math.min(innerWidth * 0.6, e.clientX)) + "px"; });
+  addEventListener("mouseup", () => { drag = false; });
+})();
+
+init().catch(e => showError(e));
+</script>
+</body>
+</html>

@@ -1,0 +1,225 @@
+# Launch site library
+#
+# Real launch sites, so a design can state WHERE it launches from instead of carrying a bare latitude.
+# Reference a row from the design's mission block with
+#
+#   launch_site:
+#     site:
+#       v: Kennedy Space Center LC-39A
+#       u: '-'
+#       d: Launch site chosen from the library; fills latitude
+#       s: config/launch_sites.yaml
+#       t: reference
+#
+# and `latitude_deg` is filled from the row. Leave `site` null to type a latitude by hand - that is the
+# "Custom" option in the GUI, and nothing here touches the design.
+#
+# WHAT THIS LIBRARY DOES AND DOES NOT GIVE YOU, read this before trusting it.
+#   * latitude_deg and longitude_deg are the published coordinates of the pad or range named in `name`.
+#     Latitude is what the performance model uses (Earth-rotation credit and the azimuth relation
+#     sin b = cos i / cos lat). Longitude is used by the impact-point map, which walks the downrange
+#     distance from this meridian along the launch azimuth; both are filled into the design when a site
+#     is named. Launch windows are still not modelled.
+#   * A site constrains the inclinations you can reach in TWO ways, and only the first is modelled here:
+#       1. PHYSICS. A direct ascent cannot reach an inclination below the site latitude, because
+#          cos i / cos lat > 1 has no solution. The tool computes that floor from the latitude and
+#          refuses a lower inclination rather than quietly flying a dog-leg (orbit.launch_azimuth_deg).
+#       2. RANGE SAFETY. Every real site also has azimuth corridors set by what the rocket may fly over,
+#          which cut the reachable band further and differ per pad, per vehicle and per year.
+#     Those corridors are NOT in this library and are NOT modelled. No azimuth limits have been invented
+#     to fill the gap: a site that in reality cannot launch due east is not flagged as such here. Treat
+#     the computed floor as a necessary condition, never a sufficient one.
+#   * altitude_m is deliberately ABSENT. The sources used give coordinates but not pad elevation, and site
+#     altitude is recorded-but-unused in the performance model, so choosing a site leaves whatever
+#     altitude the design already states alone rather than overwriting it with a guessed zero.
+#   * Coordinates are to 4 decimal places where the source gives them, which is about 11 m - far finer than
+#     anything in this tool needs. A large range (Baikonur, Jiuquan) has many pads tens of kilometres apart;
+#     where the row names a range rather than a pad, the coordinate is the reference point the source gives
+#     and the latitude is good to a few hundredths of a degree, which is immaterial to the rotation credit.
+#
+# All values SI (degrees for angles). Latitude is positive north, longitude positive east.
+
+meta:
+  version: 1
+  retrieved: 2026-10-18
+  note: >-
+    Coordinates read from Wikipedia 'List of rocket launch sites' on 2026-10-18, except SaxaVord, which is
+    not listed there and was read from Wikipedia 'SaxaVord Spaceport' on the same date. Both are secondary
+    sources. They are used because the pad coordinate only has to be good to a few hundredths of a degree
+    for the Earth-rotation credit, and because no primary range document covers all these countries.
+
+sites:
+# ------------------------------------------------------------------ United States
+- name: Cape Canaveral Space Force Station
+  region: United States
+  country: United States
+  latitude_deg: 28.4667
+  longitude_deg: -80.5585
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18): station reference point. Individual pads (SLC-37B, SLC-40, SLC-41) lie within about 0.1 deg of this latitude."
+- name: Kennedy Space Center LC-39A
+  region: United States
+  country: United States
+  latitude_deg: 28.6082
+  longitude_deg: -80.6040
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18): pad coordinate for LC-39A."
+- name: Vandenberg Space Force Base
+  region: United States
+  country: United States
+  latitude_deg: 34.7720
+  longitude_deg: -120.6012
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). The base's southward corridor is what makes it the US polar and sun-synchronous site, but that corridor is a range-safety limit and is not modelled here."
+- name: Wallops Flight Facility
+  region: United States
+  country: United States
+  latitude_deg: 37.8462
+  longitude_deg: -75.4794
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Pacific Spaceport Complex, Kodiak
+  region: United States
+  country: United States
+  latitude_deg: 57.4353
+  longitude_deg: -152.3393
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Starbase, Boca Chica
+  region: United States
+  country: United States
+  latitude_deg: 25.9960
+  longitude_deg: -97.1540
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+# ------------------------------------------------------------------ Russia and Kazakhstan
+- name: Baikonur Cosmodrome
+  region: Russia and Kazakhstan
+  country: Kazakhstan (operated by Russia)
+  latitude_deg: 45.9552
+  longitude_deg: 63.3503
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18): cosmodrome reference point. Pads are spread over tens of kilometres; Site 1/5 (Gagarin's Start) is within 0.05 deg of this latitude."
+- name: Plesetsk Cosmodrome
+  region: Russia and Kazakhstan
+  country: Russia
+  latitude_deg: 62.9256
+  longitude_deg: 40.5778
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Vostochny Cosmodrome
+  region: Russia and Kazakhstan
+  country: Russia
+  latitude_deg: 51.8830
+  longitude_deg: 128.3330
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Kapustin Yar
+  region: Russia and Kazakhstan
+  country: Russia
+  latitude_deg: 48.5781
+  longitude_deg: 46.2542
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+# ------------------------------------------------------------------ China
+- name: Jiuquan Satellite Launch Center
+  region: China
+  country: China
+  latitude_deg: 40.9606
+  longitude_deg: 100.2983
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18): centre reference point."
+- name: Taiyuan Satellite Launch Center
+  region: China
+  country: China
+  latitude_deg: 38.8491
+  longitude_deg: 111.6085
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Xichang Satellite Launch Center
+  region: China
+  country: China
+  latitude_deg: 28.2465
+  longitude_deg: 102.0281
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Wenchang Space Launch Site
+  region: China
+  country: China
+  latitude_deg: 19.6145
+  longitude_deg: 110.9511
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). The lowest-latitude Chinese site, which is why the heavy Long March vehicles fly from it."
+# ------------------------------------------------------------------ Europe
+- name: Guiana Space Centre, Kourou
+  region: Europe
+  country: France (French Guiana)
+  latitude_deg: 5.2374
+  longitude_deg: -52.7695
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). European spaceport; its 5.2 deg latitude is the lowest of any site in this library and gives the largest Earth-rotation credit."
+- name: Andoya Space
+  region: Europe
+  country: Norway
+  latitude_deg: 69.2943
+  longitude_deg: 16.0207
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Esrange Space Center
+  region: Europe
+  country: Sweden
+  latitude_deg: 67.8934
+  longitude_deg: 21.1043
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: SaxaVord Spaceport
+  region: Europe
+  country: United Kingdom (Shetland)
+  latitude_deg: 60.8184
+  longitude_deg: -0.7692
+  source: "Wikipedia 'SaxaVord Spaceport' (read 2026-10-18): Lamba Ness peninsula, Unst. This site is not in the 'List of rocket launch sites' article used for the other rows, so it is cited separately."
+# ------------------------------------------------------------------ Asia-Pacific
+- name: Tanegashima Space Center
+  region: Asia-Pacific
+  country: Japan
+  latitude_deg: 30.3910
+  longitude_deg: 130.9681
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Uchinoura Space Center
+  region: Asia-Pacific
+  country: Japan
+  latitude_deg: 31.2519
+  longitude_deg: 131.0791
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Satish Dhawan Space Centre
+  region: Asia-Pacific
+  country: India
+  latitude_deg: 13.7374
+  longitude_deg: 80.2351
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Naro Space Center
+  region: Asia-Pacific
+  country: South Korea
+  latitude_deg: 34.4259
+  longitude_deg: 127.5279
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Sohae Satellite Launching Station
+  region: Asia-Pacific
+  country: North Korea
+  latitude_deg: 39.6600
+  longitude_deg: 124.7050
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: Mahia LC-1
+  region: Asia-Pacific
+  country: New Zealand
+  latitude_deg: -39.2604
+  longitude_deg: 177.8643
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). Southern hemisphere: latitude is negative, and the inclination floor follows its magnitude."
+- name: Woomera Range Complex
+  region: Asia-Pacific
+  country: Australia
+  latitude_deg: -30.9588
+  longitude_deg: 136.5037
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+# ------------------------------------------------------------------ Other
+- name: Alcantara Space Center
+  region: Other
+  country: Brazil
+  latitude_deg: -2.3160
+  longitude_deg: -44.3676
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). At 2.3 deg from the equator this is the lowest-latitude site in the library."
+- name: Palmachim Airbase
+  region: Other
+  country: Israel
+  latitude_deg: 31.8848
+  longitude_deg: 34.6802
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). Launches westward over the Mediterranean into a retrograde orbit, which this tool's direct-ascent model does not represent; the latitude is still the right rotation reference, but the rotation CREDIT will be wrong in sign for such a flight."
+- name: Imam Khomeini Spaceport, Semnan
+  region: Other
+  country: Iran
+  latitude_deg: 35.2346
+  longitude_deg: 53.9209
+  source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."

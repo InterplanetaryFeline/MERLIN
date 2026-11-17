@@ -1,0 +1,21 @@
+"# EXAMPLE ONLY - NOT MEASURED DATA, and not any real launch site."
+"# A synthetic mid-latitude steady wind profile with a jet-stream peak near 11 km,"
+# written to exercise the kind: steady path. Replace it with your own site's sounding.
+# kind: steady
+# gust_increment_mps: 9.0
+# source: synthetic example, not measured data
+altitude_m,speed_mps
+0,5.0
+1000,11.0
+2000,15.0
+4000,22.0
+6000,30.0
+8000,38.0
+10000,44.0
+12000,40.0
+14000,31.0
+16000,22.0
+18000,15.0
+20000,11.0
+25000,14.0
+30000,19.0

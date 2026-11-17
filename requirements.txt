@@ -1,0 +1,12 @@
+numpy>=2.0
+scipy>=1.13
+openpyxl>=3.1
+matplotlib>=3.7
+PyYAML>=6.0
+pytest>=7.0        # optional: tools/run_tests.py falls back to a bundled shim without it
+
+# OPTIONAL, deliberately not installed by default: a geometry kernel for exact-solid CAD export
+# (STEP, BREP, glTF). Everything else in the tool works without it, including the DXF, STL, OBJ
+# and 3MF exports. It is a large OpenCASCADE binary wheel, which is why it is not a requirement.
+# Apache-2.0. See docs/USER_MANUAL.md 11.4.1 for what has and has not been verified with it.
+#   pip install cadquery

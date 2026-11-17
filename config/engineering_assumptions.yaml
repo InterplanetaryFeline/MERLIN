@@ -1,0 +1,440 @@
+# Engineering assumptions, MER coefficients and property library.
+# Every leaf: v=value, u=units, d=description, s=source, t=provenance (user|reference|assumed).
+# Page references are PRINTED page numbers of Edberg & Costa, Design of Rockets and Space Launch Vehicles, 2nd ed. (AIAA 2022)
+# that were checked against the supplied PDF text (PDF page = printed page + 35).
+earth_model: {v: book, u: "-", d: "Earth constants set: 'book' (mu=g0 R^2, R=6378 km) or 'wgs84'", s: "Book p.156 for 'book'; WGS-84 values are supplementary", t: reference}
+
+mer:
+  engine_a: {v: 7.81e-4, u: "kg/N", d: "Engine MER coefficient a: m = T(a + b sqrt(eps)) + c", s: "Book Table 8.9 row 1, p.495 (verified by Example 2, p.504: 710 kg)", t: reference}
+  engine_b: {v: 3.37e-5, u: "kg/N", d: "Engine MER coefficient b", s: "Book Table 8.9 row 1, p.495", t: reference}
+  engine_c: {v: 59.0, u: kg, d: "Engine MER constant c (per engine)", s: "Book Table 8.9 row 1, p.495", t: reference}
+  engine_calibration_factor: {v: 1.221, u: "-", d: "Multiplier applied to the Table 8.9 engine mass when engine.mass_method = mer_calibrated. 1.0 reproduces the book exactly", s: "MEASURED (R20), not assumed: a log-space least-squares scale over the 16 database engines that publish a dry mass. The book relation is biased low - 14 of the 16 come out light, median -24 % - and this factor removes that for a typical engine while making the two exceptional ones (Merlin 1D, RD-253) worse. engine_db.mer_check() reproduces it", t: reference}
+  gimbal_k: {v: 237.8, u: kg, d: "Gimbal MER coefficient: m = k (T/Pc)^n per engine", s: "Book Table 8.9 row 2, p.495; units verified by p.505 example (162 kg)", t: reference}
+  gimbal_exp: {v: 0.9375, u: "-", d: "Gimbal MER exponent n", s: "Book Table 8.9 row 2, p.495", t: reference}
+  thrust_structure_k: {v: 2.55e-4, u: "kg/N", d: "Thrust structure mass per total stage thrust", s: "Book Table 8.8 row 3, p.495 (verified: 1,068 kg, p.504)", t: reference}
+  unpressurized_kg_m2: {v: 13.3, u: "kg/m^2", d: "Metal unpressurised structure areal mass (skirts, intertanks, interstages, fairing)", s: "Book Table 8.8 row 1, p.495", t: reference}
+  composite_fairing_kg_m2: {v: 9.89, u: "kg/m^2", d: "Composite fairing areal mass", s: "Book Table 8.8 row 2, p.495", t: reference}
+  paf_a: {v: 0.0755, u: "-", d: "Payload attach fitting: m = a m_PL + b", s: "Book Table 8.8 row 4, p.495 (verified p.505: 805 kg for 10 t)", t: reference}
+  paf_b: {v: 50.0, u: kg, d: "PAF constant", s: "Book Table 8.8 row 4, p.495", t: reference}
+  paf_small_payload_fraction: {v: 0.15, u: "-", d: "PAF mass / payload mass for small payloads (methods 'fraction' and 'auto')", s: "1st-ed. errata p.443 adds to Table 8.8 item 3: 'Use m_PAF = 0.15 m_PL for smaller payloads'; Table 8.8 row 5 uses the same 0.15 m_PL for mounts below 20 kg", t: reference}
+  paf_fraction_payload_threshold_kg: {v: 1000.0, u: kg, d: "Payload mass below which method 'auto' uses the 0.15 m_PL form instead of the MER", s: "Engineering choice: the same 1 T small/large launcher boundary the avionics MER uses (Table 8.8 row 6)", t: assumed}
+  avionics_small_kg: {v: 75.0, u: kg, d: "Avionics mass, payload < threshold", s: "Book Table 8.8 row 6, p.495", t: reference}
+  avionics_large_kg: {v: 350.0, u: kg, d: "Avionics mass, payload > threshold", s: "Book Table 8.8 row 6, p.495", t: reference}
+  avionics_payload_threshold_kg: {v: 1000.0, u: kg, d: "Payload threshold separating small/large launchers (1 T)", s: "Book Table 8.8 row 6, p.495", t: reference}
+  avionics_upper_share: {v: 0.8, u: "-", d: "Share of avionics mass in the uppermost stage (rest split equally among lower stages)", s: "Book Table 8.8 row 6, p.495 (80/20 for two stages; equal split among lower stages for >2 is an extension)", t: reference}
+  wiring_kg_per_m: {v: 1.43, u: "kg/m", d: "Wiring mass per metre of overall vehicle length, distributed by stage length", s: "Book Table 8.8 row 7, p.495", t: reference}
+  tank_vol_mer_kg_m3: {v: 12.16, u: "kg/m^3", d: "Metallic tank mass per contained volume (all propellants except LH2)", s: "Book Table 8.7, p.495", t: reference}
+  tank_vol_mer_lh2_kg_m3: {v: 9.09, u: "kg/m^3", d: "Metallic LH2 tank mass per contained volume", s: "Book Table 8.7, p.495", t: reference}
+  tank_mer_density_tolerance: {v: 0.10, u: "-", d: "Max relative density deviation allowed when applying a Table 8.6 propellant-mass MER", s: "Engineering choice (MER is valid only at its reference density)", t: assumed}
+  shrink_load_temperature_K: {v: 293.0, u: K, d: "Ambient loading temperature used for cryogenic tank shrinkage", s: "Book Table 8.1 'Room Temp.', p.473", t: reference}
+
+propellants:
+  LOX:
+    role: {v: oxidizer, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "Liquid oxygen is an oxidiser in every combination it appears in", t: reference}
+    density_kg_m3: {v: 1140.0, u: "kg/m^3", d: "Liquid oxygen density for tank sizing", s: "Book p.473 (value used for tank sizing) and Table 8.6 p.494", t: reference}
+    boiling_K: {v: 90.1, u: K, d: "Normal boiling temperature", s: "Book Table 8.1, p.473", t: reference}
+    insulation_kg_m2: {v: 1.123, u: "kg/m^2", d: "External tank insulation areal mass", s: "Book Table 8.6, p.494", t: reference}
+    tank_mer_per_kg: {v: 0.0107, u: "kg/kg", d: "Tank mass / propellant mass (Table 8.6)", s: "Book Table 8.6, p.494", t: reference}
+    tank_mer_ref_density: {v: 1140.0, u: "kg/m^3", d: "Density at which the MER is valid", s: "Book Table 8.6, p.494", t: reference}
+  RP-1:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "Refined kerosene, a fuel", t: reference}
+    density_kg_m3: {v: 820.0, u: "kg/m^3", d: "RP-1 density for tank sizing", s: "Book p.473 and Table 8.6 p.494", t: reference}
+    boiling_K: {v: null, u: K, d: "Not cryogenic: no thermal shrinkage", s: "Book p.483 (RP-1 tanks do not shrink)", t: reference}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No tank insulation for room-temperature RP-1", s: "Book Table 8.6 lists none, p.494", t: reference}
+    tank_mer_per_kg: {v: 0.0148, u: "kg/kg", d: "Tank mass / propellant mass (Table 8.6)", s: "Book Table 8.6, p.494", t: reference}
+    tank_mer_ref_density: {v: 820.0, u: "kg/m^3", d: "Density at which the MER is valid", s: "Book Table 8.6, p.494", t: reference}
+  LH2:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "Liquid hydrogen, a fuel", t: reference}
+    density_kg_m3: {v: 71.0, u: "kg/m^3", d: "Liquid hydrogen density for tank sizing", s: "Book Table 8.6 header, p.494", t: reference}
+    boiling_K: {v: 20.7, u: K, d: "Normal boiling temperature", s: "Book Table 8.1, p.473", t: reference}
+    insulation_kg_m2: {v: 2.88, u: "kg/m^2", d: "External tank insulation areal mass", s: "Book Table 8.6, p.494", t: reference}
+    tank_mer_per_kg: {v: 0.128, u: "kg/kg", d: "Tank mass / propellant mass (Table 8.6)", s: "Book Table 8.6, p.494", t: reference}
+    tank_mer_ref_density: {v: 71.0, u: "kg/m^3", d: "Density at which the MER is valid", s: "Book Table 8.6, p.494", t: reference}
+  LCH4:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "Liquid methane, a fuel", t: reference}
+    density_kg_m3: {v: 424.0, u: "kg/m^3", d: "Liquid methane density", s: "Book Table 4.5, p.238 (text p.221 quotes 416 kg/m^3)", t: reference}
+    boiling_K: {v: 112.0, u: K, d: "Normal boiling temperature", s: "Book Table 4.5, p.238 (Table 8.1 p.473: 111.7 K)", t: reference}
+    insulation_kg_m2: {v: 0.98, u: "kg/m^2", d: "External insulation areal mass for LCH4", s: "Book Fig. 8.19 label, p.496", t: reference}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry for methane: use akin_volume or pressure_vessel", s: "Book Table 8.6 has no methane row (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+
+  N2O4:
+    role: {v: oxidizer, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "Nitrogen tetroxide is the storable oxidiser of the hypergolic pairs", t: reference}
+    density_kg_m3: {v: 1450.0, u: "kg/m^3", d: "Dinitrogen tetroxide density", s: "Book Table 4.6, p.238", t: reference}
+    boiling_K: {v: null, u: K, d: "Storable at room temperature: no cryogenic shrinkage modelled", s: "Modelling assumption (NTO boils ~294 K; ullage margin covers thermal expansion)", t: assumed}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No tank insulation for storables", s: "Assumption", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry for storables: use akin_volume, mass_fraction or pressure_vessel", s: "Book Table 8.6 has no storable rows (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+  A-50:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "Aerozine-50, a hypergolic fuel", t: reference}
+    density_kg_m3: {v: 903.0, u: "kg/m^3", d: "Aerozine 50 density (50 % N2H4 / 50 % UDMH)", s: "Standard value ~903 kg/m^3 (supplementary). Book Table 4.6 p.238 prints 1,450 for this row, which duplicates the N2O4 value and looks like a typo", t: assumed}
+    boiling_K: {v: null, u: K, d: "Storable: no shrinkage modelled", s: "Modelling assumption", t: assumed}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No insulation", s: "Assumption", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry", s: "Book Table 8.6 (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+  UDMH:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "Unsymmetrical dimethylhydrazine, a hypergolic fuel", t: reference}
+    density_kg_m3: {v: 791.0, u: "kg/m^3", d: "Unsymmetrical dimethylhydrazine density", s: "Book Table 4.6, p.238", t: reference}
+    boiling_K: {v: null, u: K, d: "Storable: no shrinkage modelled", s: "Modelling assumption", t: assumed}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No insulation", s: "Assumption", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry", s: "Book Table 8.6 (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+
+  Propane:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "A fuel (book Table 4.5)", t: reference}
+    density_kg_m3: {v: 733.0, u: "kg/m^3", d: "Liquid propane density", s: "Book Table 4.5, p.238", t: reference}
+    boiling_K: {v: 231.0, u: K, d: "Normal boiling temperature", s: "Book Table 4.5, p.238", t: reference}
+    insulation_kg_m2: {v: 0.98, u: "kg/m^2", d: "External insulation areal mass", s: "ASSUMED equal to liquid methane's (book Fig. 8.19, p.496). Propane boils 119 K warmer than methane, so this is conservative; the book gives no propane figure", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry for propane: use akin_volume or pressure_vessel", s: "Book Table 8.6 (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+  MMH:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "Monomethylhydrazine, a hypergolic fuel", t: reference}
+    density_kg_m3: {v: 874.0, u: "kg/m^3", d: "Monomethyl hydrazine density", s: "Book Table 4.6, p.238", t: reference}
+    boiling_K: {v: null, u: K, d: "Storable: no shrinkage modelled", s: "Modelling assumption", t: assumed}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No insulation", s: "Assumption", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry", s: "Book Table 8.6 (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+  N2H4:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "Hydrazine, a fuel (and a monopropellant, which this tool does not model)", t: reference}
+    density_kg_m3: {v: 1005.0, u: "kg/m^3", d: "Hydrazine density", s: "Book Table 4.6, p.238", t: reference}
+    boiling_K: {v: null, u: K, d: "Storable: no shrinkage modelled. Note hydrazine FREEZES at 274.5 K, barely below room temperature, so a real vehicle needs tank heating that this tool does not model", s: "Book Table 4.6 melting point 274.5 K, p.238", t: assumed}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No insulation modelled (a real hydrazine tank is heated, not insulated against boil-off)", s: "Assumption", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry", s: "Book Table 8.6 (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+  Ethanol:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "A fuel (book Table 4.10, the 75 % ethanol row)", t: reference}
+    density_kg_m3: {v: 789.3, u: "kg/m^3", d: "Ethanol density (pure). A 75 % ethanol / 25 % water fuel, as flown on the V-2 and in book Table 4.10, is denser: about 842 kg/m^3 by volume fraction", s: "Book Table 4.6, p.238", t: reference}
+    boiling_K: {v: null, u: K, d: "Storable: no shrinkage modelled", s: "Modelling assumption", t: assumed}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No insulation", s: "Assumption", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry", s: "Book Table 8.6 (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+  Methanol:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "A fuel", t: reference}
+    density_kg_m3: {v: 791.4, u: "kg/m^3", d: "Methanol density", s: "Book Table 4.6, p.238", t: reference}
+    boiling_K: {v: null, u: K, d: "Storable: no shrinkage modelled", s: "Modelling assumption", t: assumed}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No insulation", s: "Assumption", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry", s: "Book Table 8.6 (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+  Nitromethane:
+    role: {v: fuel, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "A monopropellant that is also used as a fuel; listed as a fuel here", t: reference}
+    density_kg_m3: {v: 1137.0, u: "kg/m^3", d: "Nitromethane density (a monopropellant as well as a fuel)", s: "Book Table 4.6, p.238", t: reference}
+    boiling_K: {v: null, u: K, d: "Storable: no shrinkage modelled", s: "Modelling assumption", t: assumed}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No insulation", s: "Assumption", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry", s: "Book Table 8.6 (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+  # High-test peroxide. The book prints 1,443 kg/m^3 for H2O2 (Table 4.6, p.238), which is essentially pure
+  # peroxide; a rocket uses it diluted, and the density falls with concentration, so the two flight grades are
+  # carried separately. HTP is an OXIDIZER - name it in a stage's `oxidizer` field.
+  HTP-90:
+    role: {v: oxidizer, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "High-test peroxide, used as the oxidiser with RP-1", t: reference}
+    density_kg_m3: {v: 1387.0, u: "kg/m^3", d: "90 % high-test peroxide density at 25 C", s: "DERIVED by linear interpolation between two cited points at 25 C: 1,373.3 kg/m^3 at 87.5 % and 1,431.0 kg/m^3 at 98 % (Aerospace 2021, 8(9), 234, mdpi.com/2226-4310/8/9/234). No directly published 90 % figure was found, so this is an interpolation, not a measurement", t: assumed}
+    boiling_K: {v: null, u: K, d: "Storable: no shrinkage modelled", s: "Modelling assumption", t: assumed}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No insulation (storable). A real HTP tank needs passivated surfaces and a vent path for slow decomposition, neither of which is modelled", s: "Assumption", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry for peroxide: use akin_volume, mass_fraction or pressure_vessel", s: "Book Table 8.6 (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+  HTP-98:
+    role: {v: oxidizer, u: "-", d: "Whether this propellant is offered as a fuel or as an oxidiser. The GUI uses it to keep the two dropdowns apart, so nobody can pick an oxidiser as a fuel", s: "High-test peroxide, used as the oxidiser with RP-1", t: reference}
+    density_kg_m3: {v: 1431.0, u: "kg/m^3", d: "98 % high-test peroxide density at 25 C", s: "Aerospace 2021, 8(9), 234 (mdpi.com/2226-4310/8/9/234): '1431.0 kg/m3 vs. 1373.3 kg/m3 at 25 C' for the 98 % and 87.5 % grades", t: reference}
+    boiling_K: {v: null, u: K, d: "Storable: no shrinkage modelled", s: "Modelling assumption", t: assumed}
+    insulation_kg_m2: {v: 0.0, u: "kg/m^2", d: "No insulation (storable); see HTP-90 for what that leaves out", s: "Assumption", t: assumed}
+    tank_mer_per_kg: {v: null, u: "kg/kg", d: "No Table 8.6 entry for peroxide", s: "Book Table 8.6 (p.494)", t: reference}
+    tank_mer_ref_density: {v: null, u: "kg/m^3", d: "-", s: "-", t: reference}
+
+# ---------------------------------------------------------------------------------------------------------
+# Propellant combinations: what mixture ratio to run, and what performance is thermochemically available.
+#
+# A stage may name one instead of spelling out its propellants:
+#
+#   propellant_combination: {v: "LOX/RP-1", u: '-', d: "...", s: "...", t: user}
+#
+# which fills `fuel`, `oxidizer` and `mixture_ratio_OF` if the stage does not state them. Anything the stage
+# does state wins, exactly as with the engine database.
+#
+# TWO DIFFERENT MIXTURE RATIOS are carried, because they are not the same number and conflating them is a
+# classic way to produce a vehicle that cannot exist:
+#   of_ratio_optimum  - the ratio that MAXIMISES Isp, from the book's thermochemistry (Table 4.10, p.240).
+#   of_ratio_flight   - what a real engine of that combination actually runs, each one named. Engines run off
+#                       the optimum for cooling, turbine temperature, density and tank-volume reasons. For
+#                       LOX/LH2 the gap is enormous: peak Isp is near O/F 4.0, and the J-2 flew at 5.50.
+# `of_ratio_flight` is what gets filled into a stage, because this tool sizes real vehicles, not ideal ones.
+#
+# Book reference condition for Isp, c* and Tc (Table 4.10, p.240): chamber pressure 1,000 psia (6.895 MPa),
+# optimum expansion to sea-level ambient, adiabatic combustion, isentropic expansion. The book prints each
+# combination TWICE - frozen equilibrium (upper row) and shifting equilibrium (lower row); the shifting values
+# are carried here and the frozen ones in *_frozen. These are NOT vacuum Isp figures: a vacuum nozzle of large
+# area ratio legitimately beats them (RD-180 delivers 338 s vacuum against Table 4.10's 300 s for LOX/RP-1).
+# They are an upper bound on what the chemistry can give AT THAT CONDITION, useful for sanity, not a target.
+#
+# bulk_sg is the book's printed specific gravity of the mixture. The tool recomputes it from the component
+# densities and the mixture ratio and checks the two agree - see tests/test_propellant_combinations.py, where
+# that check independently confirms the Table 4.6 Aerozine-50 density is a misprint.
+propellant_combinations:
+  "LOX/LH2":
+    oxidizer: {v: LOX, u: '-', d: "Oxidizer key into `propellants`", s: "Book Table 4.10, p.240", t: reference}
+    fuel: {v: LH2, u: '-', d: "Fuel key into `propellants`", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum: {v: 4.02, u: '-', d: "O/F at maximum Isp (shifting equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum_frozen: {v: 3.40, u: '-', d: "O/F at maximum Isp (frozen equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_flight: {v: 5.50, u: '-', d: "Flown mixture ratio. Far above the Isp optimum: hydrogen engines run fuel-rich to keep turbine and chamber temperatures down", s: "Book Table 4.12, p.242: Rocketdyne J-2, f = 5.50 +/- 2 % on SA504 and later. Table 4.14 (p.245) gives 6.0 for the SSME and RS-68, 5.3 for HM-60", t: reference}
+    isp_ref_s: {v: 391.0, u: s, d: "Theoretical Isp at the book reference condition", s: "Book Table 4.10, p.240", t: reference}
+    isp_ref_frozen_s: {v: 388.0, u: s, d: "Frozen-equilibrium value", s: "Book Table 4.10, p.240", t: reference}
+    cstar_ref_mps: {v: 2432.0, u: "m/s", d: "Theoretical characteristic velocity", s: "Book Table 4.10, p.240", t: reference}
+    Tc_ref_K: {v: 2724.0, u: K, d: "Theoretical chamber temperature", s: "Book Table 4.10, p.240", t: reference}
+    mw_ref_kg_kmol: {v: 10.0, u: "kg/kmol", d: "Exhaust molecular mass", s: "Book Table 4.10, p.240", t: reference}
+    bulk_sg: {v: 0.28, u: '-', d: "Specific gravity of the mixture at of_ratio_optimum", s: "Book Table 4.10, p.240", t: reference}
+  "LOX/RP-1":
+    oxidizer: {v: LOX, u: '-', d: "Oxidizer key", s: "Book Table 4.10, p.240", t: reference}
+    fuel: {v: RP-1, u: '-', d: "Fuel key", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum: {v: 2.56, u: '-', d: "O/F at maximum Isp (shifting equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum_frozen: {v: 2.24, u: '-', d: "O/F at maximum Isp (frozen equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_flight: {v: 2.27, u: '-', d: "Flown mixture ratio", s: "Book Table 4.11, p.241: Rocketdyne F-1, f = 2.27 +/- 2 %. Table 4.14 (p.245) spans 2.25 (RS-27A, MA-5A) to 2.72 (RD-180)", t: reference}
+    isp_ref_s: {v: 300.0, u: s, d: "Theoretical Isp at the book reference condition", s: "Book Table 4.10, p.240", t: reference}
+    isp_ref_frozen_s: {v: 286.0, u: s, d: "Frozen-equilibrium value", s: "Book Table 4.10, p.240", t: reference}
+    cstar_ref_mps: {v: 1804.0, u: "m/s", d: "Theoretical characteristic velocity", s: "Book Table 4.10, p.240", t: reference}
+    Tc_ref_K: {v: 3399.0, u: K, d: "Theoretical chamber temperature", s: "Book Table 4.10, p.240", t: reference}
+    mw_ref_kg_kmol: {v: 23.3, u: "kg/kmol", d: "Exhaust molecular mass", s: "Book Table 4.10, p.240", t: reference}
+    bulk_sg: {v: 1.02, u: '-', d: "Specific gravity of the mixture at of_ratio_optimum", s: "Book Table 4.10, p.240", t: reference}
+  "LOX/LCH4":
+    oxidizer: {v: LOX, u: '-', d: "Oxidizer key", s: "Book Table 4.5, p.238", t: reference}
+    fuel: {v: LCH4, u: '-', d: "Fuel key", s: "Book Table 4.5, p.238", t: reference}
+    of_ratio_optimum: {v: 2.44, u: '-', d: "O/F at the book's quoted condition", s: "DERIVED from book Table 4.5 (p.238), which prints 0.41 kg methane per kg LOx; O/F is its reciprocal, 1/0.41 = 2.44", t: reference}
+    of_ratio_optimum_frozen: {v: null, u: '-', d: "Table 4.5 prints one value only", s: "Book Table 4.5, p.238", t: reference}
+    of_ratio_flight: {v: 2.44, u: '-', d: "No methane engine is tabulated in the book, so the optimum is used. Published methane engines run richer in oxygen: 3.4 for RD-185 and RD-167 (Krishnan, 'Three Bipropellants for Upper Stage Propulsion', Table 3)", s: "Book Table 4.5, p.238; no flown figure in the book", t: assumed}
+    isp_ref_s: {v: 268.0, u: s, d: "Isp with LOx as the book prints it", s: "Book Table 4.5, p.238", t: reference}
+    isp_ref_frozen_s: {v: null, u: s, d: "-", s: "-", t: reference}
+    cstar_ref_mps: {v: null, u: "m/s", d: "Not given for methane: Table 4.10 has no methane row", s: "Book Table 4.10, p.240", t: reference}
+    Tc_ref_K: {v: null, u: K, d: "Not given for methane", s: "Book Table 4.10, p.240", t: reference}
+    mw_ref_kg_kmol: {v: null, u: "kg/kmol", d: "-", s: "-", t: reference}
+    bulk_sg: {v: null, u: '-', d: "Not printed; the tool computes it from the component densities", s: "Book Table 4.10 has no methane row", t: reference}
+  "LOX/Propane":
+    oxidizer: {v: LOX, u: '-', d: "Oxidizer key", s: "Book Table 4.5, p.238", t: reference}
+    fuel: {v: Propane, u: '-', d: "Fuel key", s: "Book Table 4.5, p.238", t: reference}
+    of_ratio_optimum: {v: 2.94, u: '-', d: "O/F at the book's quoted condition", s: "DERIVED from book Table 4.5 (p.238): 0.34 kg propane per kg LOx, so O/F = 1/0.34 = 2.94", t: reference}
+    of_ratio_optimum_frozen: {v: null, u: '-', d: "Table 4.5 prints one value only", s: "Book Table 4.5, p.238", t: reference}
+    of_ratio_flight: {v: 2.94, u: '-', d: "No propane engine is tabulated in the book or flown at scale, so the optimum is used", s: "Book Table 4.5, p.238", t: assumed}
+    isp_ref_s: {v: 260.0, u: s, d: "Isp with LOx as the book prints it", s: "Book Table 4.5, p.238", t: reference}
+    isp_ref_frozen_s: {v: null, u: s, d: "-", s: "-", t: reference}
+    cstar_ref_mps: {v: null, u: "m/s", d: "Not given for propane", s: "Book Table 4.10, p.240", t: reference}
+    Tc_ref_K: {v: null, u: K, d: "Not given for propane", s: "Book Table 4.10, p.240", t: reference}
+    mw_ref_kg_kmol: {v: null, u: "kg/kmol", d: "-", s: "-", t: reference}
+    bulk_sg: {v: null, u: '-', d: "Not printed; computed from the component densities", s: "Book Table 4.10 has no propane row", t: reference}
+  "LOX/UDMH":
+    oxidizer: {v: LOX, u: '-', d: "Oxidizer key", s: "Book Table 4.10, p.240", t: reference}
+    fuel: {v: UDMH, u: '-', d: "Fuel key", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum: {v: 1.65, u: '-', d: "O/F at maximum Isp (shifting equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum_frozen: {v: 1.39, u: '-', d: "O/F at maximum Isp (frozen equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_flight: {v: 1.65, u: '-', d: "No LOX/UDMH engine is tabulated in the book (its UDMH engines are N2O4-fed), so the optimum is used", s: "Book Table 4.10, p.240", t: assumed}
+    isp_ref_s: {v: 310.0, u: s, d: "Theoretical Isp at the book reference condition", s: "Book Table 4.10, p.240", t: reference}
+    isp_ref_frozen_s: {v: 295.0, u: s, d: "Frozen-equilibrium value", s: "Book Table 4.10, p.240", t: reference}
+    cstar_ref_mps: {v: 1864.0, u: "m/s", d: "Theoretical characteristic velocity", s: "Book Table 4.10, p.240", t: reference}
+    Tc_ref_K: {v: 3321.0, u: K, d: "Theoretical chamber temperature", s: "Book Table 4.10, p.240", t: reference}
+    mw_ref_kg_kmol: {v: 21.3, u: "kg/kmol", d: "Exhaust molecular mass", s: "Book Table 4.10, p.240", t: reference}
+    bulk_sg: {v: 0.96, u: '-', d: "Specific gravity of the mixture at of_ratio_optimum", s: "Book Table 4.10, p.240", t: reference}
+  "LOX/N2H4":
+    oxidizer: {v: LOX, u: '-', d: "Oxidizer key", s: "Book Table 4.10, p.240", t: reference}
+    fuel: {v: N2H4, u: '-', d: "Fuel key", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum: {v: 0.90, u: '-', d: "O/F at maximum Isp (shifting equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum_frozen: {v: 0.74, u: '-', d: "O/F at maximum Isp (frozen equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_flight: {v: 0.90, u: '-', d: "LOX/hydrazine has no tabulated flight engine; the optimum is used", s: "Book Table 4.10, p.240", t: assumed}
+    isp_ref_s: {v: 313.0, u: s, d: "Theoretical Isp at the book reference condition", s: "Book Table 4.10, p.240", t: reference}
+    isp_ref_frozen_s: {v: 301.0, u: s, d: "Frozen-equilibrium value", s: "Book Table 4.10, p.240", t: reference}
+    cstar_ref_mps: {v: 1992.0, u: "m/s", d: "Theoretical characteristic velocity", s: "Book Table 4.10, p.240", t: reference}
+    Tc_ref_K: {v: 3127.0, u: K, d: "Theoretical chamber temperature", s: "Book Table 4.10, p.240", t: reference}
+    mw_ref_kg_kmol: {v: 19.3, u: "kg/kmol", d: "Exhaust molecular mass", s: "Book Table 4.10, p.240", t: reference}
+    bulk_sg: {v: 1.07, u: '-', d: "Specific gravity of the mixture at of_ratio_optimum", s: "Book Table 4.10, p.240", t: reference}
+  "LOX/Ethanol":
+    oxidizer: {v: LOX, u: '-', d: "Oxidizer key", s: "Book Table 4.10, p.240", t: reference}
+    fuel: {v: Ethanol, u: '-', d: "Fuel key. NOTE the book's row is 75 % ethanol / 25 % water (the V-2 fuel), which is about 7 % denser than the pure ethanol in `propellants`; the tool's computed bulk density is therefore slightly low for this row", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum: {v: 1.43, u: '-', d: "O/F at maximum Isp (shifting equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum_frozen: {v: 1.30, u: '-', d: "O/F at maximum Isp (frozen equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_flight: {v: 1.43, u: '-', d: "No ethanol engine is tabulated in the book; the optimum is used", s: "Book Table 4.10, p.240", t: assumed}
+    isp_ref_s: {v: 279.0, u: s, d: "Theoretical Isp at the book reference condition", s: "Book Table 4.10, p.240", t: reference}
+    isp_ref_frozen_s: {v: 267.0, u: s, d: "Frozen-equilibrium value", s: "Book Table 4.10, p.240", t: reference}
+    cstar_ref_mps: {v: 1670.0, u: "m/s", d: "Theoretical characteristic velocity", s: "Book Table 4.10, p.240", t: reference}
+    Tc_ref_K: {v: 2957.0, u: K, d: "Theoretical chamber temperature", s: "Book Table 4.10, p.240", t: reference}
+    mw_ref_kg_kmol: {v: 24.1, u: "kg/kmol", d: "Exhaust molecular mass", s: "Book Table 4.10, p.240", t: reference}
+    bulk_sg: {v: 1.01, u: '-', d: "Specific gravity of the mixture at of_ratio_optimum (for the 75 % ethanol fuel)", s: "Book Table 4.10, p.240", t: reference}
+  "N2O4/N2H4":
+    oxidizer: {v: N2O4, u: '-', d: "Oxidizer key", s: "Book Table 4.10, p.240", t: reference}
+    fuel: {v: N2H4, u: '-', d: "Fuel key", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum: {v: 1.34, u: '-', d: "O/F at maximum Isp (shifting equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum_frozen: {v: 1.08, u: '-', d: "O/F at maximum Isp (frozen equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_flight: {v: 1.34, u: '-', d: "No N2O4/hydrazine engine is tabulated in the book (its storable engines run UDMH or Aerozine 50); the optimum is used", s: "Book Table 4.10, p.240", t: assumed}
+    isp_ref_s: {v: 292.0, u: s, d: "Theoretical Isp at the book reference condition", s: "Book Table 4.10, p.240", t: reference}
+    isp_ref_frozen_s: {v: 283.0, u: s, d: "Frozen-equilibrium value", s: "Book Table 4.10, p.240", t: reference}
+    cstar_ref_mps: {v: 1782.0, u: "m/s", d: "Theoretical characteristic velocity", s: "Book Table 4.10, p.240", t: reference}
+    Tc_ref_K: {v: 2977.0, u: K, d: "Theoretical chamber temperature", s: "Book Table 4.10, p.240", t: reference}
+    mw_ref_kg_kmol: {v: 20.9, u: "kg/kmol", d: "Exhaust molecular mass", s: "Book Table 4.10, p.240", t: reference}
+    bulk_sg: {v: 1.22, u: '-', d: "Specific gravity of the mixture at of_ratio_optimum", s: "Book Table 4.10, p.240", t: reference}
+  "N2O4/A-50":
+    oxidizer: {v: N2O4, u: '-', d: "Oxidizer key", s: "Book Table 4.10, p.240", t: reference}
+    fuel: {v: A-50, u: '-', d: "Fuel key (50 % hydrazine / 50 % UDMH)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum: {v: 2.00, u: '-', d: "O/F at maximum Isp (shifting equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum_frozen: {v: 1.62, u: '-', d: "O/F at maximum Isp (frozen equilibrium)", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_flight: {v: 2.00, u: '-', d: "Flown mixture ratio", s: "Book Table 4.14, p.245: Titan LR87-AJ-11, f = 2 (the LR91-AJ-11 upper stage runs 1.86)", t: reference}
+    isp_ref_s: {v: 288.0, u: s, d: "Theoretical Isp at the book reference condition", s: "Book Table 4.10, p.240", t: reference}
+    isp_ref_frozen_s: {v: 278.0, u: s, d: "Frozen-equilibrium value", s: "Book Table 4.10, p.240", t: reference}
+    cstar_ref_mps: {v: 1745.0, u: "m/s", d: "Theoretical characteristic velocity", s: "Book Table 4.10, p.240", t: reference}
+    Tc_ref_K: {v: 3088.0, u: K, d: "Theoretical chamber temperature", s: "Book Table 4.10, p.240", t: reference}
+    mw_ref_kg_kmol: {v: 22.6, u: "kg/kmol", d: "Exhaust molecular mass", s: "Book Table 4.10, p.240", t: reference}
+    bulk_sg: {v: 1.21, u: '-', d: "Specific gravity of the mixture at of_ratio_optimum. This is the row that exposes the Table 4.6 Aerozine-50 density misprint: 1.21 is only reachable with a fuel density near 903 kg/m^3, not the 1,450 kg/m^3 Table 4.6 prints", s: "Book Table 4.10, p.240", t: reference}
+  "N2O4/UDMH":
+    oxidizer: {v: N2O4, u: '-', d: "Oxidizer key", s: "Book Table 4.14, p.245", t: reference}
+    fuel: {v: UDMH, u: '-', d: "Fuel key", s: "Book Table 4.14, p.245", t: reference}
+    of_ratio_optimum: {v: null, u: '-', d: "Table 4.10 has no N2O4/UDMH row, so no thermochemical optimum is available from the book", s: "Book Table 4.10, p.240", t: reference}
+    of_ratio_optimum_frozen: {v: null, u: '-', d: "-", s: "-", t: reference}
+    of_ratio_flight: {v: 2.67, u: '-', d: "Flown mixture ratio", s: "Book Table 4.14, p.245: RD-253, f = 2.67 (the RD-0210 upper-stage engine runs 2.65)", t: reference}
+    isp_ref_s: {v: null, u: s, d: "No Table 4.10 row; the flown vacuum figures are 316 s (RD-253) and 327 s (RD-0210), Table 4.14", s: "Book Table 4.14, p.245", t: reference}
+    isp_ref_frozen_s: {v: null, u: s, d: "-", s: "-", t: reference}
+    cstar_ref_mps: {v: null, u: "m/s", d: "No Table 4.10 row", s: "Book Table 4.10, p.240", t: reference}
+    Tc_ref_K: {v: null, u: K, d: "No Table 4.10 row", s: "Book Table 4.10, p.240", t: reference}
+    mw_ref_kg_kmol: {v: null, u: "kg/kmol", d: "-", s: "-", t: reference}
+    bulk_sg: {v: null, u: '-', d: "Not printed; computed from the component densities", s: "Book Table 4.10 has no N2O4/UDMH row", t: reference}
+  # High-test peroxide combinations. NOT in the book, which gives HTP a density (Table 4.6) and nothing else.
+  # Every figure below is from the two cited papers and is tagged reference or assumed accordingly.
+  "HTP-90/RP-1":
+    oxidizer: {v: HTP-90, u: '-', d: "Oxidizer key", s: "Anderson, 'Peroxide Propulsion at the Turn of the Century', NASA MSFC (ntrs.nasa.gov/citations/20000033615)", t: reference}
+    fuel: {v: RP-1, u: '-', d: "Fuel key. The two cited engines burn JP-8 rather than RP-1; the tool treats them as the same kerosene, which is an approximation", s: "Anderson, NASA MSFC", t: assumed}
+    of_ratio_optimum: {v: null, u: '-', d: "No thermochemical optimum was found for the 90 % grade; the flown ratios below are used instead", s: "Not found in the cited sources", t: reference}
+    of_ratio_optimum_frozen: {v: null, u: '-', d: "-", s: "-", t: reference}
+    of_ratio_flight: {v: 6.5, u: '-', d: "Flown mixture ratio", s: "Anderson, NASA MSFC: AR2-3 (90 % H2O2/JP-8) at MR 6.5. The same paper's USFE engine runs MR 6.0", t: reference}
+    isp_ref_s: {v: 290.0, u: s, d: "DELIVERED VACUUM Isp, not a theoretical value - note this differs in kind from the book-sourced rows above, which are theoretical at sea-level expansion", s: "Anderson, NASA MSFC: USFE (90 % H2O2/JP-8) delivered vacuum Isp 290 s at MR 6.0, Pc 500 psia, area ratio 40:1, c* efficiency 0.97. The AR2-3 at area ratio 12:1 delivers only 246 s", t: reference}
+    isp_ref_frozen_s: {v: null, u: s, d: "-", s: "-", t: reference}
+    cstar_ref_mps: {v: null, u: "m/s", d: "Not published in the cited source, which gives c* EFFICIENCY (0.97) but no absolute value", s: "Anderson, NASA MSFC", t: reference}
+    Tc_ref_K: {v: null, u: K, d: "Not published in the cited source", s: "Anderson, NASA MSFC", t: reference}
+    mw_ref_kg_kmol: {v: null, u: "kg/kmol", d: "-", s: "-", t: reference}
+    bulk_sg: {v: null, u: '-', d: "Not published; computed from the component densities", s: "-", t: reference}
+  "HTP-98/RP-1":
+    oxidizer: {v: HTP-98, u: '-', d: "Oxidizer key", s: "Krishnan et al., 'Three Bipropellants for Upper Stage Propulsion' (propulsion-skrishnan.com), Table 2", t: reference}
+    fuel: {v: RP-1, u: '-', d: "Fuel key", s: "Krishnan et al., Table 1", t: reference}
+    of_ratio_optimum: {v: 7.38, u: '-', d: "O/F at maximum equilibrium Isp (also maximum density-impulse)", s: "Krishnan et al., Table 2: H2O2-RP1 at concentration 0.98, CEC71 at 8 MPa and area ratio 190; max equilibrium Isp at O/F 7.38", t: reference}
+    of_ratio_optimum_frozen: {v: 6.26, u: '-', d: "O/F at maximum frozen Isp", s: "Krishnan et al., Table 2", t: reference}
+    of_ratio_flight: {v: 7.5, u: '-', d: "Mixture ratio of engines designed for this combination", s: "Krishnan et al., Table 3: BA-44 and BA-810 at O/F 7.5 (both development engines). The flown Gamma-2 runs 8.23 on ~83 % peroxide; the RD161P runs 5.9 on ~97 %", t: reference}
+    isp_ref_s: {v: 347.4, u: s, d: "Theoretical Isp at 8 MPa and area ratio 190 - a large upper-stage nozzle, NOT the book's sea-level-expansion condition, so this value is not comparable with the rows above", s: "Krishnan et al., Table 2: 3,407 N-s/kg at O/F 7.38, divided by g0 = 9.80665", t: reference}
+    isp_ref_frozen_s: {v: 333.2, u: s, d: "Frozen value, 3,268 N-s/kg / g0", s: "Krishnan et al., Table 2", t: reference}
+    cstar_ref_mps: {v: null, u: "m/s", d: "Not published in the cited source", s: "Krishnan et al.", t: reference}
+    Tc_ref_K: {v: 2961.0, u: K, d: "Theoretical chamber temperature at O/F 7.38", s: "Krishnan et al., Table 2", t: reference}
+    mw_ref_kg_kmol: {v: null, u: "kg/kmol", d: "-", s: "-", t: reference}
+    bulk_sg: {v: 1.295, u: '-', d: "Average propellant density 1,295 kg/m^3. Note this is computed in the source with RP-1 at 773 kg/m^3 and H2O2 at 1,443 kg/m^3, not this tool's 820 and 1,431, so the tool's own computed value differs by a few per cent", s: "Krishnan et al.: 'Average propellant density for the H2O2-RP1 is 1295 kg/m3'", t: reference}
+
+solid_propellants:
+  # Densities are the book's Table 4.7 values (p.238; theoretical SRM performance at 1,000 psia, sea level,
+  # perfectly expanded, frozen combustion). Isp is an ENGINE-LEVEL input in the stage/booster block, not here.
+  # Note: Table 4.2 (p.222) quotes a specific gravity of 1.35 for "Solid Propellant (Shuttle SRM)"; that is far
+  # below the Table 4.7 composite densities and is used there only for volumetric-Isp comparison, so it is not
+  # used for sizing here.
+  HTPB_AP_AL20:
+    density_kg_m3: {v: 1740.0, u: "kg/m^3", d: "Composite propellant: NH4ClO4 + 12 % binder + 20 % Al (modern HTPB class)", s: "Book Table 4.7 row 3, p.238", t: reference}
+    isp_note: {v: "Table 4.7 gives Isp 266 s and c* 1,577 m/s at 1,000 psia, SL, perfect expansion, frozen flow", u: "-", d: "Reference performance", s: "Book Table 4.7, p.238", t: reference}
+    c_star_mps: {v: 1577.0, u: m/s, d: "Characteristic exhaust speed. Used by the internal-ballistics solution to close P_c = [rho a c* A_b/A_t]^(1/(1-n)); also the c* that Eq. 8:28 sizes the throat with", s: "Book Table 4.7 row 3, p.238", t: reference}
+    burn_rate_exponent: {v: 0.35, u: "-", d: "Pressure exponent n in de Saint Robert's law r = a Pc^n. The book gives the typical range 0.4-0.7 and warns that n > 1 is unstable (p.231); modern aluminised HTPB/AP sits at the low end, and this value is an ASSUMPTION, not a measured property of this propellant. The burning-rate coefficient a is not assumed at all: it is calibrated so the motor delivers its own design chamber pressure", s: "Assumed; book p.231 gives the range but no value for this propellant", t: assumed}
+    source: {v: "Edberg & Costa Table 4.7 (p.238)", u: "-", d: "Provenance", s: "Book", t: reference}
+  PBAN_AP_AL:
+    density_kg_m3: {v: 1690.0, u: "kg/m^3", d: "Composite propellant: NH4ClO4 + 18 % polymer + 4-20 % Al (Shuttle SRB class)", s: "Book Table 4.7 row 2, p.238", t: reference}
+    isp_note: {v: "Table 4.7 gives Isp 262 s and c* 1,590 m/s; Table 4.2 gives the Shuttle SRM 242 s SL / 262 s vacuum", u: "-", d: "Reference performance", s: "Book Tables 4.2/4.7", t: reference}
+    source: {v: "Edberg & Costa Table 4.7 (p.238)", u: "-", d: "Provenance", s: "Book", t: reference}
+  AN_COMPOSITE:
+    density_kg_m3: {v: 1510.0, u: "kg/m^3", d: "Ammonium-nitrate composite: NH4NO3 + 11 % binder + 7 % additives (low performance, low smoke)", s: "Book Table 4.7 row 1, p.238", t: reference}
+    isp_note: {v: "Table 4.7 gives Isp 192 s and c* 1,209 m/s", u: "-", d: "Reference performance", s: "Book Table 4.7, p.238", t: reference}
+    source: {v: "Edberg & Costa Table 4.7 (p.238)", u: "-", d: "Provenance", s: "Book", t: reference}
+
+tank_materials:
+  # THE ALLOWABLE-STRESS BASIS, read this before trading one material against another.
+  #
+  # sigma_allow_Pa is NOT the published yield strength. The legacy Al-2219 entry below carries 250 MPa
+  # against a 395 MPa minimum 0.2 % proof strength for 2219-T87 - a knockdown of 0.633 - described in its
+  # own source field as an assumed round number for a preliminary estimate. Every material added since uses
+  # THE SAME 0.633 fraction of its own published minimum yield, for one reason: a material trade is only
+  # meaningful if each candidate is derated on the same basis. Quoting one material at full yield and
+  # another at two thirds of it would decide the trade by bookkeeping rather than by metallurgy.
+  #
+  # The knockdown is a stand-in for everything a preliminary model does not carry - temperature, weld
+  # softening beyond the joint efficiency, fatigue, fracture control, and the difference between a minimum
+  # specified property and a design allowable. It is NOT a qualified allowable, and none of these materials
+  # is qualified for flight here. The safety_factor below is applied on top of it, not instead of it.
+  #
+  # Each entry's yield_min_Pa records the published figure the allowable was derated from, so the basis can
+  # be checked, and changed, without hunting through datasheets.
+  Al-2219:
+    name: {v: "Aluminium alloy (generic, 2219-class)", u: "-", d: "Material label", s: "Generic assumption", t: assumed}
+    rho_kg_m3: {v: 2840.0, u: "kg/m^3", d: "Density", s: "Typical handbook value (supplementary)", t: assumed}
+    alpha_per_K: {v: 23.4e-6, u: "1/K", d: "Coefficient of thermal expansion", s: "Book p.472 (aluminium 23.4e-6 /K)", t: reference}
+    sigma_allow_Pa: {v: 250.0e6, u: Pa, d: "Allowable membrane stress at operating temperature (before safety factor)", s: "Assumed round number for a preliminary pressure-vessel estimate; not qualified", t: assumed}
+    joint_efficiency: {v: 0.9, u: "-", d: "Weld joint efficiency", s: "Assumed", t: assumed}
+    safety_factor: {v: 1.4, u: "-", d: "Factor applied to pressure for sizing", s: "Assumed", t: assumed}
+    corrosion_allowance_m: {v: 0.0003, u: m, d: "Manufacturing / chem-mill allowance added to thickness", s: "Assumed", t: assumed}
+    t_min_m: {v: 0.0015, u: m, d: "Minimum practical gauge", s: "Assumed", t: assumed}
+    E_Pa: {v: 69.0e9, u: Pa, d: "Young's modulus. Needed by the Chapter 10 buckling allowables (Eqs. 10.25, 10.31-10.33), not by the membrane tank sizing", s: "Book Example 2, p.637: E_Al = 69 GPa (10e6 psi)", t: reference}
+    poisson: {v: 0.31, u: "-", d: "Poisson ratio. Needed only by the flared-skirt buckling criterion of NASA SP-8019", s: "Book Sec. 10.3.1.1, p.638: 'typically around 0.31'", t: reference}
+    t_min_structural_m: {v: 0.0005, u: m, d: "Minimum gauge for a load-carrying skin in the stress analysis. Distinct from t_min_m above, which is the minimum the pressure-vessel tank sizing will accept", s: "Book Table 10.2, p.634: aluminium skin t >= 0.50 mm (0.020 in.)", t: reference}
+    yield_min_Pa: {v: 395.0e6, u: Pa, d: "Published minimum 0.2 % proof strength, recorded so the allowable above can be traced to it (250/395 = 0.633)", s: "Matmatch AA 2219-T87: 0.2 % proof 395 MPa typical of the 340-400 MPa range", t: reference}
+
+  SS-301-FH:
+    name: {v: "Stainless steel 301, full hard (AMS 5519)", u: "-", d: "Material label", s: "AMS 5519 full-hard sheet", t: reference}
+    rho_kg_m3: {v: 7880.0, u: "kg/m^3", d: "Density", s: "Upper Metals AMS 5519 datasheet: 0.2850 lb/in^3 = 7.88 g/cm^3", t: reference}
+    alpha_per_K: {v: 17.0e-6, u: "1/K", d: "Coefficient of thermal expansion", s: "MakeItFrom full-hard 301: 17 um/m-K", t: reference}
+    sigma_allow_Pa: {v: 611.0e6, u: Pa, d: "Allowable membrane stress before safety factor: 0.633 x minimum yield, the same basis as Al-2219", s: "Derived: 0.633 x 965 MPa (AMS 5519 minimum 0.2 % yield). Not a qualified allowable", t: assumed}
+    yield_min_Pa: {v: 965.0e6, u: Pa, d: "Published minimum 0.2 % yield strength", s: "Upper Metals AMS 5519 datasheet: 140 ksi = 965 MPa minimum", t: reference}
+    joint_efficiency: {v: 0.7, u: "-", d: "Weld joint efficiency. Low on purpose: fusion welding anneals the cold work that gives full-hard 301 its strength, so a welded seam is much weaker than the parent sheet", s: "Assumed; the mechanism is why Atlas-type balloon tanks were built from carefully welded cold-rolled sheet", t: assumed}
+    safety_factor: {v: 1.4, u: "-", d: "Factor applied to pressure for sizing", s: "Assumed, same as Al-2219 so the materials compare", t: assumed}
+    corrosion_allowance_m: {v: 0.0, u: m, d: "No chem-mill or corrosion allowance assumed for stainless", s: "Assumed", t: assumed}
+    t_min_m: {v: 0.0004, u: m, d: "Minimum practical gauge. Thin-gauge stainless is the point of this material: pressure-stabilised tanks were built from sheet a few tenths of a millimetre thick", s: "Assumed", t: assumed}
+    E_Pa: {v: 193.0e9, u: Pa, d: "Young's modulus", s: "Upper Metals AMS 5519 datasheet: 28e6 psi = 193 GPa", t: reference}
+    poisson: {v: 0.28, u: "-", d: "Poisson ratio", s: "MakeItFrom full-hard 301: 0.28", t: reference}
+    t_min_structural_m: {v: 0.0003, u: m, d: "Minimum gauge for a load-carrying skin", s: "Assumed", t: assumed}
+
+  SS-304L:
+    name: {v: "Stainless steel 304L, annealed", u: "-", d: "Material label", s: "Common cryogenic-tank stainless", t: reference}
+    rho_kg_m3: {v: 8030.0, u: "kg/m^3", d: "Density", s: "Combined Metals 304L datasheet: 0.29 lb/in^3 = 8.03 g/cm^3", t: reference}
+    alpha_per_K: {v: 16.9e-6, u: "1/K", d: "Coefficient of thermal expansion", s: "Combined Metals 304L datasheet: 16.9 um/m-C (20-300 C)", t: reference}
+    sigma_allow_Pa: {v: 108.0e6, u: Pa, d: "Allowable membrane stress before safety factor: 0.633 x minimum yield, the same basis as Al-2219. LOW, because annealed 304L is a soft material - its attraction is toughness and weldability, not strength", s: "Derived: 0.633 x 170 MPa minimum yield. Not a qualified allowable", t: assumed}
+    yield_min_Pa: {v: 170.0e6, u: Pa, d: "Published minimum 0.2 % yield strength, annealed", s: "Combined Metals 304L datasheet: 25 ksi = 170 MPa minimum, annealed", t: reference}
+    joint_efficiency: {v: 1.0, u: "-", d: "Weld joint efficiency: an annealed austenitic weld is as strong as the annealed parent, which is much of why this grade is welded into tanks", s: "Assumed", t: assumed}
+    safety_factor: {v: 1.4, u: "-", d: "Factor applied to pressure for sizing", s: "Assumed, same as Al-2219 so the materials compare", t: assumed}
+    corrosion_allowance_m: {v: 0.0, u: m, d: "No chem-mill or corrosion allowance assumed for stainless", s: "Assumed", t: assumed}
+    t_min_m: {v: 0.0015, u: m, d: "Minimum practical gauge. Higher than for full-hard 301 because the low allowable drives thickness anyway", s: "Assumed", t: assumed}
+    E_Pa: {v: 193.0e9, u: Pa, d: "Young's modulus", s: "Combined Metals 304L datasheet: 28.0e3 ksi = 193 GPa", t: reference}
+    poisson: {v: 0.29, u: "-", d: "Poisson ratio", s: "Handbook value for austenitic stainless (supplementary)", t: assumed}
+    t_min_structural_m: {v: 0.0005, u: m, d: "Minimum gauge for a load-carrying skin", s: "Assumed", t: assumed}
+
+  Ti-6Al-4V:
+    name: {v: "Titanium Ti-6Al-4V, grade 5 annealed (AMS 4911)", u: "-", d: "Material label", s: "AMS 4911 annealed sheet", t: reference}
+    rho_kg_m3: {v: 4430.0, u: "kg/m^3", d: "Density", s: "Handbook value for Ti-6Al-4V (supplementary; not on the AMS 4911 sheet consulted)", t: assumed}
+    alpha_per_K: {v: 8.6e-6, u: "1/K", d: "Coefficient of thermal expansion", s: "Handbook value for Ti-6Al-4V (supplementary)", t: assumed}
+    sigma_allow_Pa: {v: 522.0e6, u: Pa, d: "Allowable membrane stress before safety factor: 0.633 x minimum yield, the same basis as Al-2219", s: "Derived: 0.633 x 825 MPa (AMS 4911 minimum 0.2 % proof). Not a qualified allowable", t: assumed}
+    yield_min_Pa: {v: 825.0e6, u: Pa, d: "Published minimum 0.2 % proof strength, annealed", s: "RS Components AMS 4911 Ti-6Al-4V datasheet: >= 825 MPa", t: reference}
+    joint_efficiency: {v: 0.9, u: "-", d: "Weld joint efficiency. Titanium welds well but only under inert cover; contamination embrittles the seam", s: "Assumed", t: assumed}
+    safety_factor: {v: 1.4, u: "-", d: "Factor applied to pressure for sizing", s: "Assumed, same as Al-2219 so the materials compare", t: assumed}
+    corrosion_allowance_m: {v: 0.0, u: m, d: "No corrosion allowance assumed for titanium", s: "Assumed", t: assumed}
+    t_min_m: {v: 0.0008, u: m, d: "Minimum practical gauge", s: "Assumed", t: assumed}
+    E_Pa: {v: 114.0e9, u: Pa, d: "Young's modulus. Note it is well below steel, so a titanium shell buckles sooner than its strength alone suggests", s: "RS Components AMS 4911 datasheet: 114 GPa", t: reference}
+    poisson: {v: 0.34, u: "-", d: "Poisson ratio", s: "Handbook value for Ti-6Al-4V (supplementary)", t: assumed}
+    t_min_structural_m: {v: 0.0005, u: m, d: "Minimum gauge for a load-carrying skin", s: "Assumed", t: assumed}
+
+convergence:
+  tol: {v: 1.0e-9, u: "-", d: "Relative-change convergence tolerance (GLOM, stage dry masses, propellant)", s: "Engineering choice", t: assumed}
+  max_iter: {v: 200, u: "-", d: "Iteration limit", s: "Engineering choice", t: assumed}
+  relax: {v: 1.0, u: "-", d: "Under-relaxation factor on dry-mass update (1 = none)", s: "Engineering choice", t: assumed}
+
+mer_scatter:
+  # Relative 1-sigma scatter of each mass-estimating relationship, for the Monte-Carlo in uncertainty.py.
+  #
+  # The book publishes the MER coefficients but no scatter for them, so most numbers here are ASSUMPTIONS and are
+  # tagged as such. Two are not: engine_mass and solid_casing were MEASURED in v0.15 by running the relation
+  # against every engine or motor that publishes the matching figure, and carry t: reference with the method that
+  # produced them (engine_db.mer_check(), solid_inert.error_stats()). They are anchored on this tool's own validation: against twelve real vehicles the median GLOM
+  # error is 17 % and the spread of individual stage structural factors against published values is roughly
+  # +/- 25 % (docs/VALIDATION_REPORT.md), which is what a mass-estimating relationship fitted to a historical
+  # population should be expected to do. Treat the resulting interval as "how much the method could be wrong",
+  # not as a probability anyone has measured.
+  #
+  # Set any entry to 0 to freeze that coefficient.
+  engine_mass: {v: 0.37, u: "-", d: "1-sigma on the Table 8.9 engine-mass MER (coefficients a, b, c scaled together)", s: "MEASURED, not assumed (R20): the MER was run against the eight database engines that publish a dry mass, giving a standard deviation of 37 % about a median of -24 % (16 engines as of v0.16). The spread is real - the RS-68 comes out 55 % light because of its ablative nozzle, the Merlin 1D 104 % heavy because it is the lightest engine ever flown for its thrust. engine_db.mer_check() reproduces the figure", t: reference}
+  thrust_structure: {v: 0.20, u: "-", d: "1-sigma on the thrust-structure MER", s: "Assumed; simple thrust-per-mass rule, no load path modelled", t: assumed}
+  unpressurized_structure: {v: 0.20, u: "-", d: "1-sigma on the 13.3 kg/m2 skirt/interstage/fairing areal mass", s: "Assumed; one areal density covers every structural concept (skin-stringer to sandwich)", t: assumed}
+  tank_mass: {v: 0.18, u: "-", d: "1-sigma on the tank MERs (Table 8.6 propellant-mass and Table 8.7 volume forms)", s: "Assumed; Table 8.6 is valid only at its reference densities and ignores pressure and load", t: assumed}
+  solid_casing: {v: 0.25, u: "-", d: "1-sigma on the solid-motor casing coefficient k (Eq. 8:18)", s: "MEASURED (R18): the published stage-level regressions of solid_inert carry a mean absolute error of 17-20 % over 34 flown stages, and the book's own k sits above the whole composite population. 25 % is the composite fit's own reported RMS percentage error", t: reference}
+  avionics: {v: 0.30, u: "-", d: "1-sigma on the avionics mass", s: "Assumed; a two-value step (75/350 kg) cannot describe a population, and it is visibly heavy for small launchers", t: assumed}
+  paf: {v: 0.20, u: "-", d: "1-sigma on the payload attach fitting mass", s: "Assumed", t: assumed}
+  wiring: {v: 0.25, u: "-", d: "1-sigma on the wiring mass per metre", s: "Assumed", t: assumed}
+  residual_propellant: {v: 0.30, u: "-", d: "1-sigma on the residual-propellant fraction", s: "Assumed; depends on feed-system design and shutdown accuracy, neither of which is modelled", t: assumed}
+  isp_delivered: {v: 0.01, u: "-", d: "1-sigma on delivered specific impulse", s: "Assumed; about 3 s on a 300 s engine, which is a typical acceptance-test band", t: assumed}

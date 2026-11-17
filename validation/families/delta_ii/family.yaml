@@ -1,0 +1,40 @@
+# Launch vehicle FAMILY manifest. See src/launch_vehicle/families.py for the format.
+# Every variant loads the same base design and overrides only what makes it that variant, so the shared
+# first and second stage are shared as a fact rather than as three copies that can drift apart.
+family:
+  name: Delta II 7000 series
+  note: >-
+    One Extra-Extended Long Tank Thor first stage and one AJ10-118K second stage across all three variants;
+    they differ only in how many GEM-40 strap-ons are fitted. The 7920 lights six of its nine on the ground
+    and three in the air; the 3- and 4-booster variants light all of theirs at lift-off, because there is no
+    ground-lit group left to ignite an air-lit one behind.
+  base: ../../delta2_7920.yaml
+  reference: "7920"
+  variants:
+    "7320":
+      label: Delta II 7320 (3 x GEM-40)
+      overrides:
+        boosters.n_total: 3
+        boosters.n_ground_lit: 3
+        mission.payload_mass_kg: 2800.0
+      published:
+        payload_kg: {v: 2800.0, u: kg, d: Published payload to 185 km circular at 28.5 deg, s: 'Space Launch Report Delta II data sheet (NASA-hosted copy, sma.nasa.gov/LaunchVehicle/assets/delta-ii-data-sheet.pdf): one table gives all three variants to 185 km x 28.5 deg - 7320 2.80 t / 152 t lift-off, 7420 3.20 t / 162 t, 7920 5.10 t / 228 t. One source and one methodology across the family, which is what makes the variants comparable with each other', t: reference}
+        glom_kg: {v: 152000.0, u: kg, d: Published lift-off mass, s: 'Space Launch Report Delta II data sheet (NASA-hosted copy, sma.nasa.gov/LaunchVehicle/assets/delta-ii-data-sheet.pdf): one table gives all three variants to 185 km x 28.5 deg - 7320 2.80 t / 152 t lift-off, 7420 3.20 t / 162 t, 7920 5.10 t / 228 t. One source and one methodology across the family, which is what makes the variants comparable with each other', t: reference}
+    "7420":
+      label: Delta II 7420 (4 x GEM-40)
+      overrides:
+        boosters.n_total: 4
+        boosters.n_ground_lit: 4
+        mission.payload_mass_kg: 3200.0
+      published:
+        payload_kg: {v: 3200.0, u: kg, d: Published payload to 185 km circular at 28.5 deg, s: 'Space Launch Report Delta II data sheet (NASA-hosted copy, sma.nasa.gov/LaunchVehicle/assets/delta-ii-data-sheet.pdf): one table gives all three variants to 185 km x 28.5 deg - 7320 2.80 t / 152 t lift-off, 7420 3.20 t / 162 t, 7920 5.10 t / 228 t. One source and one methodology across the family, which is what makes the variants comparable with each other', t: reference}
+        glom_kg: {v: 162000.0, u: kg, d: Published lift-off mass, s: 'Space Launch Report Delta II data sheet (NASA-hosted copy, sma.nasa.gov/LaunchVehicle/assets/delta-ii-data-sheet.pdf): one table gives all three variants to 185 km x 28.5 deg - 7320 2.80 t / 152 t lift-off, 7420 3.20 t / 162 t, 7920 5.10 t / 228 t. One source and one methodology across the family, which is what makes the variants comparable with each other', t: reference}
+    "7920":
+      label: Delta II 7920 (9 x GEM-40, 6+3)
+      overrides:
+        boosters.n_total: 9
+        boosters.n_ground_lit: 6
+        mission.payload_mass_kg: 5100.0
+      published:
+        payload_kg: {v: 5100.0, u: kg, d: Published payload to 185 km circular at 28.5 deg, s: 'Space Launch Report Delta II data sheet (NASA-hosted copy, sma.nasa.gov/LaunchVehicle/assets/delta-ii-data-sheet.pdf): one table gives all three variants to 185 km x 28.5 deg - 7320 2.80 t / 152 t lift-off, 7420 3.20 t / 162 t, 7920 5.10 t / 228 t. One source and one methodology across the family, which is what makes the variants comparable with each other', t: reference}
+        glom_kg: {v: 228000.0, u: kg, d: Published lift-off mass, s: 'Space Launch Report Delta II data sheet (NASA-hosted copy, sma.nasa.gov/LaunchVehicle/assets/delta-ii-data-sheet.pdf): one table gives all three variants to 185 km x 28.5 deg - 7320 2.80 t / 152 t lift-off, 7420 3.20 t / 162 t, 7920 5.10 t / 228 t. One source and one methodology across the family, which is what makes the variants comparable with each other', t: reference}
