@@ -58,11 +58,22 @@ def _unwrap(node, path, reg):
     raise ConfigError(f"input '{path}' = {node!r} is an undocumented bare value; use {{v:, u:, d:, s:, t:}}")
 
 
-def load_yaml_annotated(path, reg=None):
+def load_yaml_annotated(path, reg=None, extra=None):
+    """Read and unwrap an annotated file. `extra` is merged in before unwrapping: library entries from the
+    personal library and from a design's own `library:` block (see user_library), so they are checked and
+    registered exactly like shipped ones."""
     reg = [] if reg is None else reg
     with open(path, "r", encoding="utf-8") as f:
         raw = yaml.load(f, Loader=_Loader)
     meta = raw.pop("meta", {})
+    # A design's `library:` block is not an input of the vehicle but entries for the library it is sized
+    # against; it is handed back through meta for load_design to merge into the assumptions
+    if "library" in raw:
+        meta = dict(meta or {})
+        meta["_library"] = raw.pop("library")
+    if extra:
+        from .user_library import merge as _merge
+        _merge(raw, extra)
     # A `trade_study:` block is a study DECLARATION, not an input to the vehicle: plain YAML by design,
     # read by `studies.run_trade_study` and by the GUI's trade endpoint, never by the sizing loop. It was
     # not excluded here, so a file carrying one could be opened in the GUI and then refused on Size with
@@ -79,6 +90,19 @@ CREATABLE_LEAVES = {("engine", "cstar_mps"): dict(u="m/s", d="Delivered characte
 
 def creatable_leaf(keys) -> bool:
     return tuple(keys[-2:]) in CREATABLE_LEAVES
+
+
+def assumptions_doc(assumptions_path, design_path=None) -> dict:
+    """The annotated assumptions document as a design sees it: shipped, plus the personal library, plus the
+    design's own `library:` block. For the GUI's choice lists, which must offer exactly what the sizing reads."""
+    from .user_library import extra_entries, merge
+    with open(assumptions_path, encoding="utf-8") as fh:
+        doc = yaml.load(fh, Loader=_Loader) or {}
+    block = None
+    if design_path:
+        with open(design_path, encoding="utf-8") as fh:
+            block = (yaml.load(fh, Loader=_Loader) or {}).get("library")
+    return merge(doc, extra_entries(block))
 
 
 def deep_set(d: dict, dotted: str, value):
@@ -343,13 +367,22 @@ def build_spec(design: dict, assump: dict, reg: list | None = None, name: str = 
 
 def load_design(design_path, assumptions_path, overrides: dict | None = None) -> VehicleSpec:
     """Load, optionally override (dotted paths on the *unwrapped* design dict), and build a VehicleSpec."""
+    from . import user_library as _ul
     reg = []
     design, meta, reg = load_yaml_annotated(design_path, reg)
-    assump, _, reg = load_yaml_annotated(assumptions_path, reg)
+    assump, _, reg = load_yaml_annotated(assumptions_path, reg,
+                                         extra=_ul.extra_entries((meta or {}).get("_library")))
     if overrides:
         for k, v in overrides.items():
-            tgt = assump if k.startswith("assumptions.") else design
-            deep_set(tgt, k[len("assumptions."):] if k.startswith("assumptions.") else k, v)
+            # The GUI writes a library value under its own path (propellants.LOX.density_kg_m3), with no
+            # "assumptions." prefix. Sent to the design dict, it failed with a KeyError, so no library value
+            # could be changed from the GUI at all. A path whose first segment is an assumptions block goes there.
+            if k.startswith("assumptions."):
+                deep_set(assump, k[len("assumptions."):], v)
+            elif re.split(r"[.\[]", k, maxsplit=1)[0] in _ul.ASSUMPTION_BLOCKS:
+                deep_set(assump, k, v)
+            else:
+                deep_set(design, k, v)
     # real engines and motors, if the design names any: fills only what the design left out, and records every
     # filled value in the input register with the database row's own source (see engine_db)
     # the engine database and the propellant-combination library are resolved inside build_spec

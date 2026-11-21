@@ -1,4 +1,4 @@
-# MERLIN (v1.1.0)
+# MERLIN (v1.2.0)
 
 **Mass Estimation Relationships for Launch vehicle Initial sizing**, by Szymon Błażejewicz.
 
@@ -132,8 +132,8 @@ Releases are built automatically. Push a version tag that matches `pyproject.tom
 `MERLIN-<version>-windows.zip` to the release that the download link above points at:
 
 ```bash
-git tag v1.1.0
-git push origin v1.1.0
+git tag v1.2.0
+git push origin v1.2.0
 ```
 
 To build it on your own machine instead, from a clean virtual environment:

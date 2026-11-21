@@ -104,7 +104,7 @@ mission:
     include_earth_rotation:
       v: true
       u: '-'
-      d: Credit Earth rotation (justified for a direct eastward-type ascent from a fixed site)
+      d: Include Earth's rotation, by subtracting the launch site's eastward speed from the delta-v the vehicle must supply (justified for a direct, eastward-type ascent from a fixed site)
       s: Book Example 3.9 (p.185) method
       t: reference
   losses:
@@ -259,7 +259,10 @@ mission:
     profile:
       v: book_amr_95
       u: '-'
-      d: built-in name 'book_amr_95', or a path / glob / list of paths to CSV or Excel wind profiles (altitude_m and speed_mps columns, or km/ft and kt/km-h variants)
+      d: 'Horizontal wind speed against altitude that the vehicle flies through. Used ONLY by the ground and flight loads analysis: at each altitude the wind is turned into an angle of attack, atan(wind / flight speed), and
+        that angle gives the aerodynamic normal force, bending moment and q-alpha the structure is checked against (book recipe pp.572-573). It does not change the sizing, the delta-v or the trajectory, which flies in still
+        air. Give ''book_amr_95'' for the book''s Eastern Test Range 95 % wind envelope (Fig. 9.35), or your own data as a path, glob or list of paths to CSV or Excel files with altitude and speed columns (altitude_m and speed_mps,
+        or km/ft and kt/km-h variants); several files are each flown as a separate load case'
       s: Book Fig. 9.35, p.572
       t: reference
     kind:

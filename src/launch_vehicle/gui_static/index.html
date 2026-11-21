@@ -123,6 +123,11 @@ th{background:var(--accent);color:#fff;font-weight:600;font-size:11px;position:s
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 tbody tr:nth-child(even) td{background:#fafbfc}
 tr.sum td{font-weight:700;background:#eef2f7 !important}
+th.sortable{cursor:pointer;user-select:none}
+th.sortable:hover{filter:brightness(1.15)}
+th .arr{opacity:.85;margin-left:3px;font-size:9px}
+.tblbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0 2px;font-size:11.5px}
+.tblbar select{font-size:11.5px}
 .kpi{display:flex;flex-wrap:wrap;gap:9px;margin-bottom:13px}
 .kpi div{border:1px solid var(--line);border-left:3px solid var(--accent2);padding:7px 12px;background:#fbfcfd;min-width:136px}
 .kpi b{display:block;font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
@@ -185,6 +190,7 @@ dialog input,dialog textarea{width:100%;border:1px solid var(--line);border-radi
   <button class="ghost attn" id="attn" hidden></button>
   <span class="sp"></span>
   <span id="stat"></span>
+  <button class="ghost" id="libBtn" title="Add your own fuels, oxidisers and tank materials">Library&hellip;</button>
   <button class="ghost" id="studiesBtn">Analyses&hellip;</button>
   <button class="primary" id="run">Size vehicle</button>
 </header>
@@ -228,6 +234,13 @@ dialog input,dialog textarea{width:100%;border:1px solid var(--line);border-radi
   <label for="saveDesc">Description</label><textarea id="saveDesc" rows="2"></textarea>
   <p class="small" id="saveNote"></p>
 </div><div class="ft"><button id="saveCancel">Cancel</button><button class="primary" id="saveGo">Save</button></div></dialog>
+
+<dialog id="dlgLibrary"><div class="bd">
+  <h3>My library: your own propellants and tank materials</h3>
+  <p class="small">An entry added here appears in the fuel, oxidiser and material dropdowns of every design, marked
+     "(my library)". A design saved with it carries a copy, so it still opens on another computer.</p>
+  <div id="libBody"></div>
+</div><div class="ft"><button id="libCancel">Close</button><button class="primary" id="libGo">Add to my library</button></div></dialog>
 
 <dialog id="dlgStudies"><div class="bd">
   <h3>Analyses to run</h3>
@@ -730,12 +743,21 @@ function applySiteCascade(it, value) {
   let note = site.hint || "";
   const incPath = "mission.orbit.inclination_deg";
   const inc = byPath[incPath];
+  delete S.rowNotes[incPath];
   if (inc && typeof site.min_inclination_deg === "number") {
     const now = (incPath in S.overrides) ? S.overrides[incPath] : inc.value;
     const floor = site.min_inclination_deg;
     if (typeof now === "number" && now < floor - 1e-9) {
+      /* Picking a site is not supposed to change the orbit, so when it has to, the user is told - at the
+         site AND at the inclination field, because the field is where they will find the new number. */
       set(incPath, Math.round(floor * 1e4) / 1e4);
-      note += ` Inclination was ${now} deg, below that floor, so it has been raised to ${floor.toFixed(2)} deg.`;
+      const was = Math.round(now * 100) / 100;
+      const why = `From a site at ${floor.toFixed(2)} deg latitude, a rocket that flies its launch direction all the `
+        + `way to orbit cannot reach an orbit tilted less than ${floor.toFixed(2)} deg to the equator; going lower `
+        + "needs a sideways turn in flight (a dog-leg), which this tool does not model.";
+      note += ` The orbit inclination has been changed from ${was} deg to ${floor.toFixed(2)} deg. ${why}`;
+      S.rowNotes[incPath] = `Changed from ${was} deg to ${floor.toFixed(2)} deg when ${value} was picked. ${why} `
+        + "The revert button puts your value back, but this site cannot fly it.";
     } else if (isBlank(now)) {
       /* A new design has not answered the inclination question yet. The floor is the one value the SITE can
          justify on its own - the lowest it can reach - so offer it rather than leave the field empty and the
@@ -748,6 +770,142 @@ function applySiteCascade(it, value) {
   if (note) S.rowNotes["mission.launch_site.site"] = note;
   renderInputs(); countOverrides();
 }
+
+
+/* ------------------------------------------------------------------ your own propellants and materials
+   The Library dialog adds entries to designs/my_library.yaml (user_library.py). Each one is annotated like the
+   shipped library, a source is required, and a saved design carries a copy of every entry it uses. After a
+   change the input panel is re-read WITHOUT losing the user's edits, so the new entry is in the dropdowns at
+   once; when the dialog was opened from a fuel, oxidiser or material dropdown, that field is set to it. */
+const LIB_KINDS = {propellant: "Fuel or oxidiser", combination: "Propellant combination (oxidiser + fuel)",
+                   solid: "Solid propellant", material: "Tank material"};
+const LIB_PLURAL = {propellant: "fuels and oxidisers", combination: "propellant combinations",
+                    solid: "solid propellants", material: "materials"};
+const LIB_EXAMPLE = {propellant: "e.g. Ethanol-75", combination: "e.g. LOX/Ethanol-75", solid: "e.g. HTPB-AP-18Al",
+                     material: "e.g. Al-Li 2195"};
+const LIB_PROV = [["reference", "From a cited source (datasheet, paper, handbook)"], ["user", "My own figure"],
+                  ["assumed", "An estimate or assumption"]];
+async function openLibrary(kind, target) {
+  S.lib = await api("/api/library");
+  S.libForm = {kind: kind || (S.libForm && S.libForm.kind) || "propellant", target: target || null, edit: null, draft: null};
+  renderLibrary();
+  $("#dlgLibrary").showModal();
+}
+function renderLibrary(err) {
+  const host = $("#libBody"); host.textContent = "";
+  const F = S.libForm, schema = S.lib.schema[F.kind] || [];
+  const kindSel = el("select", {onchange: e => { F.kind = e.target.value; F.edit = null; F.draft = null; renderLibrary(); }});
+  for (const [k, lab] of Object.entries(LIB_KINDS)) kindSel.append(el("option", {value: k, text: lab}));
+  kindSel.value = F.kind;
+  host.append(el("label", {text: "What to add"}), kindSel);
+  const ex = F.edit;                                     // the entry being changed, or null for a new one
+  /* what was typed before a refusal; without it every error wiped the form and the user typed it all again */
+  const dr = F.draft;
+  const nameIn = el("input", {type: "text", id: "lib_entry_name", value: dr ? dr.name : ex ? ex.name : "",
+                              placeholder: LIB_EXAMPLE[F.kind]});
+  if (ex) nameIn.readOnly = true;
+  host.append(el("label", {text: "Name (as it will appear in the dropdowns)"}), nameIn);
+  for (const f of schema) {
+    let ctl;
+    const v0 = dr ? dr.values[f.key] : ex ? ex.values[f.key] : null;
+    if (f.choices) {
+      ctl = el("select", {id: "lib_" + f.key});
+      for (const c of f.choices) ctl.append(el("option", {value: c, text: c === "oxidizer" ? "oxidiser" : c}));
+      if (v0) ctl.value = v0;
+      /* a combination named the usual way, OXIDISER/FUEL, follows the two choices until the user types a name */
+      if (F.kind === "combination") ctl.addEventListener("change", () => {
+        const nm = $("#lib_entry_name");
+        if (nm && !nm.readOnly && (!nm.value || nm.dataset.auto === "1")) {
+          nm.value = `${$("#lib_oxidizer").value}/${$("#lib_fuel").value}`; nm.dataset.auto = "1";
+        }
+      });
+    } else {
+      const ph = f.default !== undefined && f.default !== null ? `blank = ${f.default}` : (f.required ? "required" : "blank = not given");
+      ctl = el("input", {type: f.text ? "text" : "number", step: "any", id: "lib_" + f.key, placeholder: ph,
+                         value: v0 === null || v0 === undefined ? "" : String(typeof v0 === "number" && Number.isFinite(v0) ? Number(v0.toPrecision(10)) : v0)});
+    }
+    const unit = f.shown && f.shown !== "-" ? ` [${f.shown}]` : "";
+    const range = f.range ? ` Accepted: ${f.range[0]} to ${f.range[1]}${f.shown && f.shown !== "-" ? " " + f.shown : ""}.` : "";
+    host.append(el("label", {text: f.label + unit + (f.required ? " *" : "")}), ctl,
+                el("div", {class: "small", style: "margin:2px 0 0;opacity:.75", text: f.d + "." + range}));
+  }
+  const src = el("textarea", {id: "lib_source", rows: 2, placeholder: "e.g. Alcoa datasheet 2195-T8, 2021; or: my own estimate"});
+  src.value = dr ? dr.source : ex ? ex.source || "" : "";
+  const prov = el("select", {id: "lib_prov"});
+  for (const [k, lab] of LIB_PROV) prov.append(el("option", {value: k, text: lab}));
+  prov.value = dr ? dr.provenance : ex ? ex.provenance || "reference" : "reference";
+  host.append(el("label", {text: "Where these numbers come from *"}), src,
+              el("label", {text: "What kind of source it is"}), prov);
+  if (err) {
+    host.append(el("p", {class: "msg bad", style: "margin-top:10px", text: err.message}));
+    const bad = err.field && document.getElementById("lib_" + err.field);
+    if (bad) { bad.style.outline = "2px solid #c0392b"; bad.focus(); }
+  }
+  const mine = (S.lib.library[F.kind] || []);
+  host.append(el("h3", {style: "margin-top:16px", text: `Your ${LIB_PLURAL[F.kind]}`}));
+  if (!mine.length) host.append(el("p", {class: "small", text: "None yet. They are kept in " + S.lib.file + "."}));
+  for (const e of mine) {
+    const V = e.values;
+    const summary = F.kind === "material"
+      ? `${V.name || ""}, ${fmt(V.rho_kg_m3, 0)} kg/m³, yield ${fmt(V.yield_min_Pa, 0)} MPa`
+      : F.kind === "combination" ? `${V.oxidizer} + ${V.fuel}, O/F ${fmt(V.of_ratio_flight, 2)}`
+        + (V.isp_ref_s ? `, reference Isp ${fmt(V.isp_ref_s, 0)} s` : "")
+      : F.kind === "solid" ? `${fmt(V.density_kg_m3, 0)} kg/m³`
+        + (V.c_star_mps ? `, c* ${fmt(V.c_star_mps, 0)} m/s, n ${V.burn_rate_exponent}` : ", no ballistics data")
+      : `${V.role === "oxidizer" ? "oxidiser" : "fuel"}, ${fmt(V.density_kg_m3, 0)} kg/m³` +
+        (V.boiling_K ? `, boils at ${fmt(V.boiling_K, 1)} K` : ", storable");
+    host.append(el("div", {style: "display:flex;gap:8px;align-items:center;margin:3px 0"}, [
+      el("span", {class: "grow", style: "flex:1", text: `${e.name}: ${summary}`}),
+      el("button", {text: "Change", onclick: () => { F.edit = e; F.draft = null; renderLibrary(); }}),
+      el("button", {text: "Remove", onclick: () => removeLibrary(e.name)})]));
+  }
+  $("#libGo").textContent = ex ? "Save changes" : "Add to my library";
+}
+async function saveLibrary() {
+  const F = S.libForm, schema = S.lib.schema[F.kind] || [];
+  const values = {};
+  for (const f of schema) values[f.key] = document.getElementById("lib_" + f.key).value;
+  const name = $("#lib_entry_name").value.trim();
+  F.draft = {name, values, source: $("#lib_source").value, provenance: $("#lib_prov").value};
+  try {
+    S.lib = Object.assign(S.lib, await api("/api/library", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "add", kind: F.kind, name, values, source: $("#lib_source").value,
+                            provenance: $("#lib_prov").value, replace: !!F.edit})}));
+  } catch (e) { renderLibrary(e); return; }
+  F.draft = null;
+  if (S.lib.combinations) S.combinations = S.lib.combinations;
+  $("#dlgLibrary").close();
+  await refreshInputs();
+  const target = F.target && S.items.find(i => i.path === F.target);
+  if (target) {
+    S.overrides[F.target] = name;
+    S.rowNotes[F.target] = `Set to ${name} from your library. The entry is in ${S.lib.file}; a design saved with it carries a copy.`;
+    /* a combination brings its fuel, oxidiser and mixture ratio with it, exactly as a shipped one does */
+    if (F.kind === "combination") applyCascade(target, name);
+    renderInputs(); countOverrides();
+  }
+  busy(false, `${name} ${F.edit ? "changed" : "added"} in your library. Press Size vehicle to use it.`);
+}
+async function removeLibrary(name) {
+  if (!confirm(`Remove ${name} from your library? Designs already saved with it keep their own copy.`)) return;
+  try {
+    S.lib = Object.assign(S.lib, await api("/api/library", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "remove", kind: S.libForm.kind, name})}));
+  } catch (e) { renderLibrary(e); return; }
+  if (S.lib.combinations) S.combinations = S.lib.combinations;
+  S.libForm.edit = null; renderLibrary(); await refreshInputs();
+}
+/* re-read the input panel for the open design, keeping every change the user has made */
+async function refreshInputs() {
+  const d = await api("/api/design?path=" + encodeURIComponent(S.path));
+  S.items = d.items;
+  renderInputs(); countOverrides();
+}
+const LIB_TARGET_RE = /^(stages\[\d+\]\.(fuel|oxidizer|propellant|propellant_combination)|stages\[\d+\]\.tank\.material|boosters\.(fuel|oxidizer|propellant))$/;
+const libKindFor = p => /material$/.test(p) ? "material" : /propellant_combination$/.test(p) ? "combination"
+                      : /\.propellant$/.test(p) ? "solid" : "propellant";
+const LIB_TIP = {material: "Add a tank material of your own", combination: "Add a propellant combination of your own",
+                 solid: "Add a solid propellant of your own", propellant: "Add a fuel or oxidiser of your own"};
 
 /* ------------------------------------------------------------------ the input tree */
 function control(it) {
@@ -784,9 +942,23 @@ function control(it) {
     if ((it.value === null || val === null) && !hasOwnEmpty) {
       ctl.append(el("option", {value: "—", text: "— not used"}));
     }
-    for (const c of it.choices) ctl.append(el("option", {value: c.value, text: c.label}));
+    /* A list whose choices carry a group (the launch sites, by continent) is drawn with a heading per group,
+       in the order the server sent them; ungrouped choices such as "Custom" stay at the top. */
+    let grp = null, box = ctl;
+    for (const c of it.choices) {
+      if (c.group && c.group !== grp) { grp = c.group; box = el("optgroup", {label: grp}); ctl.append(box); }
+      else if (!c.group) box = ctl;
+      box.append(el("option", {value: c.value, text: c.label}));
+    }
     ctl.value = (val === null || val === undefined) ? (hasOwnEmpty ? "" : "—") : String(val);
     if (ctl.selectedIndex < 0) { ctl.append(el("option", {value: String(val), text: String(val) + " (not in the list)"})); ctl.value = String(val); }
+    if (LIB_TARGET_RE.test(it.path)) {
+      const kind = libKindFor(it.path);
+      return el("span", {style: "display:flex;gap:4px;align-items:center"}, [ctl,
+        el("button", {class: "ghost", style: "padding:1px 6px;font-size:11px;white-space:nowrap",
+                      title: LIB_TIP[kind],
+                      text: "+ own", onclick: () => openLibrary(kind, it.path)})]);
+    }
   } else if (it.type === "bool") {
     ctl = el("input", {type: "checkbox", onchange: e => setOverride(it, e.target.checked)});
     ctl.checked = !!val;
@@ -1218,12 +1390,58 @@ function dragTable(ss) {
   return box;
 }
 
+/* The mass ledger numbers what belongs to no stage: 0 the payload and its adapter, -1 the fairing, -2 the
+   strap-ons. Printed raw, the fairing read as "stage -1". These are the names a reader expects. */
+function stageName(n) {
+  return n >= 1 ? String(n) : ({0: "Payload", "-1": "Fairing", "-2": "Boosters"}[n] || "–");
+}
+/* What a cell sorts by: its number when it reads as one ("7 671.7", "-408.7 m/s", "+12.3 %", "36.9"), else its
+   text. Dashes and blanks sort last whichever way the column is ordered. */
+function sortKey(c) {
+  const t = (c instanceof Node ? c.textContent : String(c).replace(/<[^>]*>/g, "")).trim();
+  if (t === "" || t === "–" || t === "-" || t === "—") return {blank: true};
+  const n = Number(t.replace(/[\u202f\u00a0 ,]/g, "").replace(/^\+/, "").replace(/[a-zA-Z%°\/\[\]·²³]+.*$/, ""));
+  return Number.isFinite(n) ? {num: n} : {txt: t.toLowerCase()};
+}
+/* Every results table with three or more rows sorts by a click on its heading: largest first, then smallest
+   first, then back to the order the tool wrote it in. A total or note row stays at the bottom. The choice is
+   remembered per table across re-draws, so changing a filter does not throw it away. */
+S.sorts = S.sorts || {};
 function table(headers, rows, numeric) {
   const t = el("table"), h = el("tr");
-  headers.forEach((x, i) => h.append(el("th", {class: (numeric || []).includes(i) ? "n" : "", html: x})));
+  const key = headers.join("|");
+  const fixed = rows.filter(r => !Array.isArray(r) && /\b(sum|small)\b/.test(r.cls || ""));
+  const body = rows.filter(r => !fixed.includes(r));
+  const sortable = body.length >= 3;
+  const st = S.sorts[key];
+  let order = body.slice();
+  if (sortable && st) {
+    const cell = r => (Array.isArray(r) ? r : r.cells)[st.col];
+    order.sort((a, b) => {
+      const x = sortKey(cell(a)), y = sortKey(cell(b));
+      if (x.blank || y.blank) return (x.blank ? 1 : 0) - (y.blank ? 1 : 0);
+      const d = (x.num !== undefined && y.num !== undefined) ? x.num - y.num
+              : String(x.txt ?? x.num).localeCompare(String(y.txt ?? y.num));
+      return st.dir === "desc" ? -d : d;
+    });
+  }
+  headers.forEach((x, i) => {
+    const th = el("th", {class: ((numeric || []).includes(i) ? "n" : "") + (sortable ? " sortable" : ""), html: x});
+    if (sortable) {
+      th.title = "Click to sort by this column: largest first, then smallest first, then the original order";
+      if (st && st.col === i) th.append(el("span", {class: "arr", text: st.dir === "desc" ? "▼" : "▲"}));
+      th.addEventListener("click", () => {
+        const now = S.sorts[key];
+        S.sorts[key] = !now || now.col !== i ? {col: i, dir: "desc"} : now.dir === "desc" ? {col: i, dir: "asc"} : null;
+        if (!S.sorts[key]) delete S.sorts[key];
+        t.replaceWith(table(headers, rows, numeric));
+      });
+    }
+    h.append(th);
+  });
   t.append(el("thead", {}, [h]));
   const b = el("tbody");
-  for (const r of rows) {
+  for (const r of order.concat(fixed)) {
     const cls = Array.isArray(r) ? "" : r.cls, cells = Array.isArray(r) ? r : r.cells;
     const tr = el("tr", cls ? {class: cls} : {});
     cells.forEach((c, i) => {
@@ -1829,8 +2047,33 @@ function render() {
   }
   else if (S.tab === "mass") {
     v.append(el("h2", {class: "sect", text: "Mass ledger"}));
-    v.append(table(["Stage", "Group", "Item", "kg", "z [m]", "Source"],
-      r.ledger.map(i => [i.stage || "–", i.group, i.name, fmt(i.mass_kg, 1), i.z_m.toFixed(2), i.source]), [3, 4]));
+    /* Every item on the vehicle at lift-off. Filter it to one stage or one group, leave the propellant out to
+       compare the hardware, and click a heading to sort: kg sorts heaviest first. "% shown" is each item's
+       share of what the filter leaves; "% lift-off" its share of the whole vehicle. */
+    const lf = S.ledgerFilter = S.ledgerFilter || {stage: "", group: "", noProp: false};
+    const stages = [...new Set(r.ledger.map(i => stageName(i.stage)))];
+    const groups = [...new Set(r.ledger.map(i => i.group))];
+    const pick = (label, list, k) => {
+      const s = el("select", {onchange: e => { lf[k] = e.target.value; render(); }});
+      s.append(el("option", {value: "", text: "all"}));
+      for (const x of list) s.append(el("option", {value: x, text: x}));
+      s.value = lf[k];
+      return el("label", {}, [document.createTextNode(label + " "), s]);
+    };
+    const np = el("input", {type: "checkbox", onchange: e => { lf.noProp = e.target.checked; render(); }});
+    np.checked = lf.noProp;
+    v.append(el("div", {class: "tblbar"}, [pick("Stage", stages, "stage"), pick("Group", groups, "group"),
+      el("label", {}, [np, document.createTextNode(" leave out propellant")]),
+      el("span", {class: "small", text: "Click a column heading to sort."})]));
+    const total = r.ledger.reduce((a, i) => a + i.mass_kg, 0) || 1;
+    const shown = r.ledger.filter(i => (!lf.stage || stageName(i.stage) === lf.stage) && (!lf.group || i.group === lf.group)
+                                       && !(lf.noProp && /propellant/i.test(i.group)));
+    const sub = shown.reduce((a, i) => a + i.mass_kg, 0) || 1;
+    const lrows = shown.map(i => [stageName(i.stage), i.group, i.name, fmt(i.mass_kg, 1), (100 * i.mass_kg / sub).toFixed(1),
+                                  (100 * i.mass_kg / total).toFixed(2), i.z_m.toFixed(2), i.source]);
+    lrows.push({cls: "sum", cells: [`${shown.length} of ${r.ledger.length} items`, "", "Total shown", fmt(sub, 1), "100.0",
+                                    (100 * sub / total).toFixed(2), "", ""]});
+    v.append(table(["Stage", "Group", "Item", "kg", "% shown", "% lift-off", "z [m]", "Source"], lrows, [3, 4, 5, 6]));
     if (r.events.length) {
       v.append(el("h3", {class: "sect", text: "Mass properties at flight events"}));
       v.append(table(["Event", "Mass [kg]", "CM z [m]", "CM/L", "Roll inertia", "Pitch inertia"],
@@ -2090,6 +2333,9 @@ async function init() {
 $("#run").onclick = size;
 $("#filter").oninput = renderInputs;
 $("#onlychanged").onchange = renderInputs;
+$("#libBtn").onclick = () => openLibrary(null, null).catch(showError);
+$("#libCancel").onclick = () => $("#dlgLibrary").close();
+$("#libGo").onclick = () => saveLibrary();
 $("#reset").onclick = () => { S.overrides = {}; S.overrideSources = {}; renderInputs(); countOverrides(); };
 $("#open").onclick = () => { renderPick(); $("#dlgOpen").showModal(); };
 $("#openCancel").onclick = () => $("#dlgOpen").close();

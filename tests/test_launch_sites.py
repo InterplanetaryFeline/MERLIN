@@ -8,7 +8,10 @@ first US site in the list, and if the tool did not notice, the only symptom woul
 pressing Size.
 """
 import math
+import os
 import re
+
+import pytest
 
 from launch_vehicle import gui_meta, launch_sites as ls
 from launch_vehicle.orbit import launch_azimuth_deg
@@ -32,13 +35,43 @@ def test_every_site_name_is_unique():
         sorted({n for n in names if names.count(n) > 1}))
 
 
-def test_the_regions_the_user_asked_for_are_all_present():
-    regions = {r["region"] for r in ls.load()}
-    for want in ("United States", "Russia and Kazakhstan", "China", "Europe"):
-        assert want in regions, f"no {want} sites in the library"
-    names = {r["name"] for r in ls.load()}
-    for want in ("Andoya Space", "Esrange Space Center"):
-        assert want in names, f"{want} was asked for by name and is missing"
+def test_the_region_is_the_continent_the_site_stands_on():
+    """Grouped by continent since v1.1, at a user's request: Kourou is in South America although it is a
+    European site, and the list is easier to search by where a site is than by who runs it."""
+    rows = {r["name"]: r for r in ls.load()}
+    assert {r["region"] for r in rows.values()} <= set(ls.CONTINENTS)
+    for name, continent in (("Guiana Space Centre, Kourou", "South America"), ("Baikonur Cosmodrome", "Asia"),
+                            ("Plesetsk Cosmodrome", "Europe"), ("Woomera Range Complex", "Oceania"),
+                            ("Starbase, Boca Chica", "North America"), ("Alcantara Space Center", "South America")):
+        assert rows[name]["region"] == continent, name
+    for want in ("Andoya Space", "Esrange Space Center", "CPSP Ustka (suborbital)",
+                 "SUAS Aerospace (proposed, south-west Ireland)"):
+        assert want in rows, f"{want} was asked for by name and is missing"
+
+
+def test_the_two_added_sites_say_what_their_coordinates_are():
+    rows = {r["name"]: r for r in ls.load()}
+    ustka = rows["CPSP Ustka (suborbital)"]
+    assert ustka["orbital"] is False and ustka["country"] == "Poland"
+    assert 54.4 < ustka["latitude_deg"] < 54.7 and 16.4 < ustka["longitude_deg"] < 17.0
+    assert "SUBORBITAL ONLY" in ustka["source"] and "Wicko Morskie" in ustka["source"]
+    suas = rows["SUAS Aerospace (proposed, south-west Ireland)"]
+    assert suas["status"] == "proposed" and suas["country"] == "Ireland"
+    assert "NO SITE CHOSEN" in suas["source"] and "STAND-IN" in suas["source"]
+    hints = gui_meta.launch_site_map()
+    assert "SUBORBITAL" in hints["CPSP Ustka (suborbital)"]["hint"]
+    assert "PROPOSED" in hints["SUAS Aerospace (proposed, south-west Ireland)"]["hint"]
+    assert "SUBORBITAL" not in hints["Andoya Space"]["hint"] and "PROPOSED" not in hints["Andoya Space"]["hint"]
+
+
+def test_a_region_that_is_not_a_continent_is_refused():
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        p = os.path.join(d, "sites.yaml")
+        with open(p, "w", encoding="utf-8") as fh:
+            fh.write("sites:\n- {name: X, region: Asia-Pacific, latitude_deg: 10.0}\n")
+        with pytest.raises(ls.LaunchSiteError):
+            ls.load(p)
 
 
 def test_the_library_carries_no_altitude_and_no_invented_azimuth_limits():
@@ -237,14 +270,23 @@ def test_an_unknown_site_names_the_alternatives_instead_of_failing_blankly():
 # ------------------------------------------------------------------ what the GUI gets
 def test_the_dropdown_offers_custom_first_then_every_site_grouped_by_region():
     ch = ls.choices()
-    assert ch[0][0] == ls.CUSTOM and "Custom" in ch[0][1]
+    assert ch[0][0] == ls.CUSTOM and "Custom" in ch[0][1] and ch[0][2] is None
     assert len(ch) == len(ls.load()) + 1
-    labels = [lab for _, lab in ch[1:]]
+    labels = [c[1] for c in ch[1:]]
     for lab in labels:
         assert "deg" in lab, f"the label should carry the latitude: {lab!r}"
-    # regions must appear in contiguous runs, or the grouping is not grouping
-    regions = [lab.split(" - ")[0] for lab in labels]
+    # continents must appear in contiguous runs, in the declared order, or the grouping is not grouping
+    regions = [c[2] for c in ch[1:]]
     assert len(set(regions)) == len({r["region"] for r in ls.load()})
+    assert regions == sorted(regions, key=ls.CONTINENTS.index)
+    for cont in set(regions):
+        names = [c[0].lower() for c in ch[1:] if c[2] == cont]
+        assert names == sorted(names), f"{cont} is not in alphabetical order"
+    described = next(i for i in gui_meta.describe_inputs([{"path": "mission.launch_site.site", "value": None,
+                                                           "units": "-", "description": "", "source": "",
+                                                           "provenance": "user"}], {}))
+    assert described["choices"][0] == {"value": "", "label": ch[0][1]}
+    assert all(c.get("group") in ls.CONTINENTS for c in described["choices"][1:])
     seen, runs = set(), 0
     prev = None
     for r in regions:

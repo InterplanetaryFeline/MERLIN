@@ -1462,7 +1462,10 @@ def _ledger(res):
            '<p class="small">Every mass in the vehicle, where it sits on the axis, which shape it was given for '
            'inertia, and the rule it came from. This table is the input to the centre-of-mass and inertia '
            'calculation and to Figure 2.</p>']
-    rows = [[_e(i.stage) if i.stage >= 0 else "upper", _e(i.group), _e(i.name), _f(i.mass_kg, 1),
+    # 0, -1 and -2 are the ledger's numbers for the payload, the fairing and the strap-ons; "upper" used to
+    # stand for both of the last two, which put the boosters at the top of the vehicle
+    where = {0: "payload", -1: "fairing", -2: "boosters"}
+    rows = [[_e(i.stage) if i.stage >= 1 else where.get(i.stage, "-"), _e(i.group), _e(i.name), _f(i.mass_kg, 1),
              f"{i.z_m:.3f}", _e(i.kind), _e(i.shape), _e(i.source)] for i in res.ledger]
     rows.append(("sum", ["", "", "<b>Total</b>", f"<b>{_f(sum(i.mass_kg for i in res.ledger))}</b>",
                          "", "", "", ""]))

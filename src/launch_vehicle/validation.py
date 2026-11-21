@@ -110,6 +110,34 @@ def _check_tank_material_is_used(spec, out: list, W) -> None:
       field=f"stages[{first - 1}].tank.mass_method_fuel", options=opts[:6])
 
 
+def _check_cryogen_insulation(spec, W) -> None:
+    """A cryogenic propellant in a tank the design does not insulate.
+
+    Whether a tank is insulated is a switch on the STAGE (tank.insulated_fuel / insulated_oxidizer), not a property
+    of what is in it. So a stage switched from RP-1 to liquid hydrogen or methane - a shipped one, or one of your
+    own - kept its uninsulated fuel tank and came out lighter by the insulation it would carry, with nothing said.
+    Some flown tanks are bare (a LOX tank kept short of boil-off by its fill sequence, for instance), so this warns
+    and offers the switch rather than refusing.
+    """
+    for st in spec.stages:
+        tk = getattr(st, "tank", None)
+        if st.is_solid or tk is None:
+            continue
+        for role, name in (("fuel", st.fuel), ("oxidizer", st.oxidizer)):
+            ps = (spec.propellants or {}).get(name)
+            if ps is None or not ps.boiling_K or ps.boiling_K >= tk.load_temperature_K:
+                continue
+            if (tk.insulated or {}).get(role) or not ps.insulation_kg_m2:
+                continue
+            path = f"stages[{st.index - 1}].tank.insulated_{role}"
+            W("TANKINSUL",
+              f"stage {st.index}: the {role} is {name}, which boils at {ps.boiling_K:.0f} K, but its tank is not "
+              f"insulated, so the {ps.insulation_kg_m2:.2f} kg/m^2 of insulation the library gives for it is left off. "
+              f"Insulate the tank, or leave it bare only if the real tank is.", field=path,
+              options=[{"label": f"Insulate stage {st.index}'s {role} tank", "path": path, "value": True,
+                        "note": f"adds {name}'s insulation areal mass over the tank's outer surface"}])
+
+
 def _check_tank_method_inputs(spec, out: list, E) -> None:
     """A tank mass method whose own input is missing must not quietly size the tank at zero.
 
@@ -204,6 +232,7 @@ def validate_spec(spec) -> list:
     _check_launch_site(spec, warns, W)
     _check_tank_material_is_used(spec, warns, W)
     _check_tank_method_inputs(spec, errs, E)
+    _check_cryogen_insulation(spec, W)
     if spec.dv_mode not in ("fractions", "fixed"):
         E("DVMODE", "dv_allocation_mode must be 'fractions' or 'fixed'")
     f = spec.fairing

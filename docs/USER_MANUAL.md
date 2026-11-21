@@ -205,9 +205,9 @@ Overrides on the command line and in code use dotted paths into the *unwrapped* 
 | `orbit.type` | `LEO`, `SSO`, `GTO`, `GEO_VIA_GTO`, `GEO_DIRECT`, `CUSTOM`. |
 | `orbit.perigee_altitude_km`, `apogee_altitude_km`, `eccentricity` | Injection orbit. LEO/SSO are circular. |
 | `orbit.inclination_deg` | Target inclination; computed from J2 for `SSO`. Must be ≥ the launch-site latitude (no dog-legs). |
-| `launch_site.site` | A site from `config/launch_sites.yaml` (28 real sites, by name). Fills `latitude_deg` when you leave it `null`; if you state a latitude as well, **yours wins** and the disagreement is reported. `null` = Custom, use your own latitude. Nothing else is filled: longitude is carried in the library for reference only, and the library holds no pad altitudes rather than guessing them. |
+| `launch_site.site` | A site from `config/launch_sites.yaml` (30 sites, by name, listed in the GUI under their continent; one is a suborbital-only range and one a proposed site whose coordinate is a stand-in, and both say so when picked). Fills `latitude_deg` when you leave it `null`; if you state a latitude as well, **yours wins** and the disagreement is reported. `null` = Custom, use your own latitude. Nothing else is filled: longitude is carried in the library for reference only, and the library holds no pad altitudes rather than guessing them. |
 | `launch_site.latitude_deg`, `altitude_m`, `azimuth_deg` | Site; azimuth `null` ⇒ `sin β = cos i / cos lat`. Latitude is what the model uses: it sets the Earth-rotation credit and the floor on reachable inclination. |
-| `launch_site.include_earth_rotation` | Credit the site's rotation speed as a vector (book Example 3.9). |
+| `launch_site.include_earth_rotation` | "Include Earth's rotation" in the GUI: subtract the site's rotation speed, as a vector, from the delta-v the vehicle must supply (book Example 3.9). |
 | `losses.model` | `book_penalty` (Eqs. 3:36–3:38 regression, recommended for ground launch) or `user`. |
 | `losses.gravity_mps`, `drag_mps`, `steering_mps` | Used only when `model: user`. |
 | `losses.other_allowance_mps` | Extra allowance added on top of the loss model. |
@@ -333,6 +333,44 @@ the booster burn.
 `mer` (Tables 8.6–8.9 coefficients), `propellants` (density, boiling point, insulation areal mass, tank MERs),
 `solid_propellants` (density from Table 4.7), `tank_materials`, `earth_model` (`book` or `wgs84`) and
 `convergence` (`tol`, `max_iter`, `relax`). Change these only with a reason, and record it in the `s` field.
+
+Their values can also be changed for one design in the GUI, in the *Propellant library*, *Material library* and
+*Modelling assumptions* sections of the input panel. Such a change is not written into the shipped file: a
+saved design keeps it in a `library:` block of its own, as a copy of the changed field, so that design sizes the
+same vehicle wherever it is opened and every other design is unaffected. (Before v1.1 any such change made the
+sizing fail.)
+
+### 5.6b Your own propellants and tank materials
+
+The **Library...** button in the GUI's top bar, and the **+ own** button beside every fuel, oxidiser and tank
+material dropdown, open a form for adding an entry of your own. It is stored in `designs/my_library.yaml`, not in
+the shipped file, and is offered in the dropdowns of every design, marked "(my library)".
+
+* **A fuel or oxidiser** needs its role and its density as loaded, which sets the tank volume and matters most.
+  Optional: the normal boiling point (blank means storable, so no cryogenic shrinkage), the insulation mass per
+  square metre (blank is 0), and a tank-mass-per-kg coefficient for the "Akin, by propellant mass" tank method.
+  Without that coefficient the tank must be sized "by volume" or "as a pressure vessel", and the tool says so with
+  a button for each. Performance is not a property of the propellant here: the Isp is typed on the engine.
+* **A tank material** needs its density, published minimum yield, minimum tank gauge, Young's modulus and
+  thermal expansion coefficient. A blank allowable stress takes 0.633 x yield, the basis every shipped material
+  uses, so a trade compares like with like. Weld efficiency, safety factor, corrosion allowance, Poisson's ratio
+  and the minimum structural gauge default to the shipped aluminium's values, tagged `assumed`. Remember that a
+  material changes the vehicle's mass only for a tank sized "as a pressure vessel" (§5.7).
+* **A propellant combination** names an oxidiser and a fuel from the library (shipped or your own) and the
+  mixture ratio O/F the engines run at, which is required. Picking it on a stage writes the fuel, the oxidiser and
+  that mixture ratio into the stage, as a shipped combination does. Optional reference figures (O/F for peak Isp,
+  Isp, c*, chamber temperature, exhaust molecular mass) are for reference only, except c*, which is offered when an
+  engine sized from the book relations has none of its own. The name follows the two choices, OXIDISER/FUEL,
+  until you type one of your own.
+* **A solid propellant** needs the density of the cast grain, which sets the motor case volume. Its c* and
+  burn-rate exponent are optional and go together: the internal ballistics analysis needs both and nothing else
+  reads them. The motor's Isp is an input of the motor, not of the propellant.
+
+Every entry needs a source, and each field is range-checked and annotated `{v, u, d, s, t}` like the shipped
+library. A name already in the shipped library is refused: change that entry's values in the input panel
+instead. A design saved with one of your entries carries a copy in its `library:` block, so it opens on a
+computer that has never seen your library, and later edits to your library do not change a design already
+saved. Removing an entry from your library leaves those copies alone.
 
 ### 5.7 Structural materials
 

@@ -3,8 +3,11 @@
 # To publish a version: set the version in pyproject.toml, src/launch_vehicle/__init__.py, README.md and
 # CITATION.cff (tests/test_project_metadata.py checks they agree), add a docs/CHANGELOG.md entry, commit, then
 #
-#     git tag v1.0.0
-#     git push origin v1.0.0
+#     git tag v1.2.0
+#     git push origin v1.2.0
+#
+# The release page's text is that version's section of docs/CHANGELOG.md (tools/release_notes.py), so the
+# release fails rather than publish without a changelog entry.
 #
 # Run it by hand from the Actions tab to build the zip without publishing; it is then kept as a workflow artifact.
 
@@ -60,9 +63,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           zip=$(ls dist/MERLIN-*-windows.zip)
-          notes="Windows app: download the zip below, unzip it, and run MERLIN/MERLIN.exe. No Python needed. What changed: docs/CHANGELOG.md."
+          python tools/release_notes.py "${GITHUB_REF_NAME#v}" > release_notes.md
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             gh release upload "$GITHUB_REF_NAME" "$zip" --clobber
+            gh release edit "$GITHUB_REF_NAME" --notes-file release_notes.md
           else
-            gh release create "$GITHUB_REF_NAME" "$zip" --title "MERLIN ${GITHUB_REF_NAME#v}" --notes "$notes"
+            gh release create "$GITHUB_REF_NAME" "$zip" --title "MERLIN ${GITHUB_REF_NAME#v}" --notes-file release_notes.md
           fi

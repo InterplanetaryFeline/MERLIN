@@ -106,7 +106,7 @@ mission:
     include_earth_rotation:
       v: true
       u: '-'
-      d: Credit Earth rotation (justified for a direct eastward-type ascent from a fixed site)
+      d: "Include Earth's rotation, by subtracting the launch site's eastward speed from the delta-v the vehicle must supply (justified for a direct, eastward-type ascent from a fixed site)"
       s: Book Example 3.9 (p.185) method
       t: reference
   losses:

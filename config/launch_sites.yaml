@@ -37,6 +37,15 @@
 #     where the row names a range rather than a pad, the coordinate is the reference point the source gives
 #     and the latitude is good to a few hundredths of a degree, which is immaterial to the rotation credit.
 #
+#   * `region` is the CONTINENT the site stands on, which is what the GUI groups the list by: Kourou is in
+#     South America although it is a European site, Baikonur in Asia, Plesetsk and Kapustin Yar in Europe.
+#     `country` says whose it is.
+#   * `orbital: false` marks a range that flies suborbital rockets only. It is in the library because its
+#     latitude is still the right one for a sounding-rocket or test-vehicle design, but the tool sizes
+#     orbital vehicles, and a site so marked is not a place any orbital rocket has been launched from.
+#   * `status: proposed` marks a site that does not exist yet. Its coordinate is a stand-in, and the row's
+#     source says what it stands in for.
+#
 # All values SI (degrees for angles). Latitude is positive north, longitude positive east.
 
 meta:
@@ -47,98 +56,96 @@ meta:
     not listed there and was read from Wikipedia 'SaxaVord Spaceport' on the same date. Both are secondary
     sources. They are used because the pad coordinate only has to be good to a few hundredths of a degree
     for the Earth-rotation credit, and because no primary range document covers all these countries.
+    The two rows added on 2026-11-21 (CPSP Ustka and SUAS Aerospace) were read from other pages on that
+    date, named in each row, and carry coarser coordinates than the rest; each row says why.
 
 sites:
-# ------------------------------------------------------------------ United States
 - name: Cape Canaveral Space Force Station
-  region: United States
+  region: North America
   country: United States
   latitude_deg: 28.4667
   longitude_deg: -80.5585
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18): station reference point. Individual pads (SLC-37B, SLC-40, SLC-41) lie within about 0.1 deg of this latitude."
 - name: Kennedy Space Center LC-39A
-  region: United States
+  region: North America
   country: United States
   latitude_deg: 28.6082
   longitude_deg: -80.6040
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18): pad coordinate for LC-39A."
 - name: Vandenberg Space Force Base
-  region: United States
+  region: North America
   country: United States
   latitude_deg: 34.7720
   longitude_deg: -120.6012
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). The base's southward corridor is what makes it the US polar and sun-synchronous site, but that corridor is a range-safety limit and is not modelled here."
 - name: Wallops Flight Facility
-  region: United States
+  region: North America
   country: United States
   latitude_deg: 37.8462
   longitude_deg: -75.4794
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Pacific Spaceport Complex, Kodiak
-  region: United States
+  region: North America
   country: United States
   latitude_deg: 57.4353
   longitude_deg: -152.3393
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Starbase, Boca Chica
-  region: United States
+  region: North America
   country: United States
   latitude_deg: 25.9960
   longitude_deg: -97.1540
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
-# ------------------------------------------------------------------ Russia and Kazakhstan
 - name: Baikonur Cosmodrome
-  region: Russia and Kazakhstan
+  region: Asia
   country: Kazakhstan (operated by Russia)
   latitude_deg: 45.9552
   longitude_deg: 63.3503
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18): cosmodrome reference point. Pads are spread over tens of kilometres; Site 1/5 (Gagarin's Start) is within 0.05 deg of this latitude."
 - name: Plesetsk Cosmodrome
-  region: Russia and Kazakhstan
+  region: Europe
   country: Russia
   latitude_deg: 62.9256
   longitude_deg: 40.5778
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Vostochny Cosmodrome
-  region: Russia and Kazakhstan
+  region: Asia
   country: Russia
   latitude_deg: 51.8830
   longitude_deg: 128.3330
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Kapustin Yar
-  region: Russia and Kazakhstan
+  region: Europe
   country: Russia
   latitude_deg: 48.5781
   longitude_deg: 46.2542
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
-# ------------------------------------------------------------------ China
 - name: Jiuquan Satellite Launch Center
-  region: China
+  region: Asia
   country: China
   latitude_deg: 40.9606
   longitude_deg: 100.2983
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18): centre reference point."
 - name: Taiyuan Satellite Launch Center
-  region: China
+  region: Asia
   country: China
   latitude_deg: 38.8491
   longitude_deg: 111.6085
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Xichang Satellite Launch Center
-  region: China
+  region: Asia
   country: China
   latitude_deg: 28.2465
   longitude_deg: 102.0281
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Wenchang Space Launch Site
-  region: China
+  region: Asia
   country: China
   latitude_deg: 19.6145
   longitude_deg: 110.9511
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). The lowest-latitude Chinese site, which is why the heavy Long March vehicles fly from it."
-# ------------------------------------------------------------------ Europe
 - name: Guiana Space Centre, Kourou
-  region: Europe
+  region: South America
   country: France (French Guiana)
   latitude_deg: 5.2374
   longitude_deg: -52.7695
@@ -161,65 +168,77 @@ sites:
   latitude_deg: 60.8184
   longitude_deg: -0.7692
   source: "Wikipedia 'SaxaVord Spaceport' (read 2026-10-18): Lamba Ness peninsula, Unst. This site is not in the 'List of rocket launch sites' article used for the other rows, so it is cited separately."
-# ------------------------------------------------------------------ Asia-Pacific
 - name: Tanegashima Space Center
-  region: Asia-Pacific
+  region: Asia
   country: Japan
   latitude_deg: 30.3910
   longitude_deg: 130.9681
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Uchinoura Space Center
-  region: Asia-Pacific
+  region: Asia
   country: Japan
   latitude_deg: 31.2519
   longitude_deg: 131.0791
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Satish Dhawan Space Centre
-  region: Asia-Pacific
+  region: Asia
   country: India
   latitude_deg: 13.7374
   longitude_deg: 80.2351
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Naro Space Center
-  region: Asia-Pacific
+  region: Asia
   country: South Korea
   latitude_deg: 34.4259
   longitude_deg: 127.5279
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Sohae Satellite Launching Station
-  region: Asia-Pacific
+  region: Asia
   country: North Korea
   latitude_deg: 39.6600
   longitude_deg: 124.7050
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
 - name: Mahia LC-1
-  region: Asia-Pacific
+  region: Oceania
   country: New Zealand
   latitude_deg: -39.2604
   longitude_deg: 177.8643
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). Southern hemisphere: latitude is negative, and the inclination floor follows its magnitude."
 - name: Woomera Range Complex
-  region: Asia-Pacific
+  region: Oceania
   country: Australia
   latitude_deg: -30.9588
   longitude_deg: 136.5037
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
-# ------------------------------------------------------------------ Other
 - name: Alcantara Space Center
-  region: Other
+  region: South America
   country: Brazil
   latitude_deg: -2.3160
   longitude_deg: -44.3676
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). At 2.3 deg from the equator this is the lowest-latitude site in the library."
 - name: Palmachim Airbase
-  region: Other
+  region: Asia
   country: Israel
   latitude_deg: 31.8848
   longitude_deg: 34.6802
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18). Launches westward over the Mediterranean into a retrograde orbit, which this tool's direct-ascent model does not represent; the latitude is still the right rotation reference, but the rotation CREDIT will be wrong in sign for such a flight."
 - name: Imam Khomeini Spaceport, Semnan
-  region: Other
+  region: Asia
   country: Iran
   latitude_deg: 35.2346
   longitude_deg: 53.9209
   source: "Wikipedia 'List of rocket launch sites' (read 2026-10-18)."
+- name: CPSP Ustka (suborbital)
+  region: Europe
+  country: Poland
+  orbital: false
+  latitude_deg: 54.5483
+  longitude_deg: 16.6067
+  source: "Centralny Poligon Sil Powietrznych (Central Air Force Training Range), on the Baltic coast between Ustka and Jaroslawiec around Lake Wicko, per Polish Wikipedia 'Centralny Poligon Sil Powietrznych' (read 2026-11-21). SUBORBITAL ONLY: a military test range used for sounding rockets such as SpaceForest PERUN and ILR-33 Bursztyn, not a cosmodrome. No coordinate is published for the range or its launch pad; this is the coordinate of the village of Wicko Morskie, which lies inside the range, from Polish Wikipedia 'Wicko Morskie' (54 deg 32' 54'' N, 16 deg 36' 24'' E, read 2026-11-21). The range covers about 4,000 ha, so the pad is within a few kilometres of this point."
+- name: SUAS Aerospace (proposed, south-west Ireland)
+  region: Europe
+  country: Ireland
+  status: proposed
+  latitude_deg: 51.9536
+  longitude_deg: -8.1755
+  source: "PROPOSED, NO SITE CHOSEN. SUAS Aerospace plans an orbital and suborbital spaceport in Ireland for polar orbits (suasaerospace.com/vision, read 2026-11-21); its feasibility study points to the south-west coast, and as of its October 2024 pathfinder announcement site acquisition was still to be done (europeanspaceflight.com, 2024-01-03; suasaerospace.com press release, 2024-10-24). The coordinate is a STAND-IN: the company's headquarters at Elfordstown Earthstation near Midleton, County Cork (Wikipedia 'Elfordstown Earthstation', 51.9536 N, 8.1755 W, read 2026-11-21). Ireland's south-west coast lies within about half a degree of this latitude, which moves the rotation credit by under 3 m/s; the longitude places the impact-point map inland, so type the real one when a site is announced."

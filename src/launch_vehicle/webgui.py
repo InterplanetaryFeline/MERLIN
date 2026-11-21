@@ -37,7 +37,7 @@ SEARCH_DIRS = ("designs", "config", "examples", "validation")
 SAVE_DIR = os.path.join(ROOT, "designs")
 #: YAML files that live in the searched directories but are LIBRARIES, not designs. They would otherwise be
 #: offered in the Open dialog and fail to load as a vehicle. One line per new library file.
-NOT_DESIGNS = ("engineering_assumptions", "engine_database", "launch_sites")
+NOT_DESIGNS = ("engineering_assumptions", "engine_database", "launch_sites", "my_library")
 GROUP_LABELS = {"designs": "My designs", "config": "Starting points", "examples": "Examples",
                 "validation": "Check cases (real vehicles)"}
 
@@ -58,8 +58,9 @@ def _combination_map():
         import yaml
         from .config_io import _Loader
         from . import gui_meta
-        with open(DEFAULT_ASSUMPTIONS, encoding="utf-8") as fh:
-            return gui_meta.combination_map(yaml.load(fh, Loader=_Loader))
+        from .config_io import assumptions_doc
+        # with your own combinations, so picking one carries its fuel, oxidiser and mixture ratio too
+        return gui_meta.combination_map(assumptions_doc(DEFAULT_ASSUMPTIONS))
     except Exception:                                        # noqa: BLE001
         return {}
 
@@ -307,8 +308,8 @@ def design_inputs(design_path, assump_path, describe: bool = False):
         from .config_io import _Loader
         from . import gui_meta
         try:
-            with open(assump_path, encoding="utf-8") as fh:
-                assump = _yaml.load(fh, Loader=_Loader)
+            from .config_io import assumptions_doc
+            assump = assumptions_doc(assump_path, design_path)      # with your own entries, so they are offered
         except Exception:
             assump = None
         out["items"] = gui_meta.describe_inputs(items, assump)
@@ -594,10 +595,17 @@ def apply_overrides(raw: dict, overrides: dict | None, what: str = "save", sourc
     overridden leaf is re-tagged `t: user` and its source records that a person set it in the GUI - the
     alternative, inheriting the old source, would attribute a hand-entered number to the book.
     """
+    from . import user_library as _ul
     for dotted, value in (overrides or {}).items():
         node = raw
         # the register spells stage paths stages[0]...; accept that as well as stages.0...
         keys = _re.sub(r"\[(\d+)\]", r".\1", str(dotted)).split(".")
+        if keys[0] in _ul.ASSUMPTION_BLOCKS:
+            # A changed LIBRARY value is not the design's to hold in place, but the design must keep it, or the
+            # saved file would size a different vehicle. It goes into the design's `library:` block as a copy of
+            # the leaf with the new value, which load_design merges over the shipped entry.
+            _library_override(raw, keys, value, (sources or {}).get(dotted), what, dotted)
+            continue
         try:
             for k in keys[:-1]:
                 node = node[int(k)] if isinstance(node, list) else node[k]
@@ -627,6 +635,38 @@ def apply_overrides(raw: dict, overrides: dict | None, what: str = "save", sourc
 
 
 from .config_io import CREATABLE_LEAVES as _CREATABLE_LEAVES, creatable_leaf as _creatable_leaf  # noqa: E402
+
+
+def _library_override(raw, keys, value, src, what, dotted):
+    from .config_io import assumptions_doc, _Loader                    # noqa: F401
+    import tempfile
+    import yaml as _yaml
+    # the leaf as the design currently sees it, so its units and description travel with the new value
+    with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False, encoding="utf-8") as fh:
+        _yaml.safe_dump({"library": raw.get("library") or {}}, fh)
+        tmp = fh.name
+    try:
+        doc = assumptions_doc(DEFAULT_ASSUMPTIONS, tmp)
+    finally:
+        _unlink(tmp)
+    node = doc
+    try:
+        for k in keys:
+            node = node[k]
+    except (KeyError, TypeError) as e:
+        raise ConfigError(f"cannot {what}: unknown parameter path '{dotted}'") from e
+    if not (isinstance(node, dict) and "v" in node):
+        raise ConfigError(f"cannot {what}: '{dotted}' is not a single value")
+    leaf = dict(node)
+    leaf["v"] = value
+    if isinstance(src, dict) and src.get("s"):
+        leaf["s"], leaf["t"] = str(src["s"]), str(src.get("t") or "assumed")
+    else:
+        leaf["s"], leaf["t"] = "Set in the GUI", "user"
+    tgt = raw.setdefault("library", {})
+    for k in keys[:-1]:
+        tgt = tgt.setdefault(k, {})
+    tgt[keys[-1]] = leaf
 
 
 class DesignExists(ConfigError):
@@ -744,6 +784,9 @@ def save_design(base_path, overrides, name, description="", filename=None, targe
     with open(base_path, encoding="utf-8") as fh:
         raw = _yaml.load(fh, Loader=_Loader)
     apply_overrides(raw, overrides, sources=override_sources)
+    # a design that uses an entry of your own carries a copy of it, so it opens on a machine without your library
+    from .user_library import embed_used as _embed
+    _embed(raw)
     raw["meta"] = {"name": name or stem,
                    "description": description or f"Saved from the GUI, based on "
                                                  f"{os.path.relpath(base_path, ROOT)}"}
@@ -854,6 +897,10 @@ class Handler(BaseHTTPRequestHandler):
                                         "engines": _engine_map(),
                                         "trade_studies": trade_study_files(),
                                         "launch_sites": _launch_site_map()})
+            if u.path == "/api/library":
+                from . import user_library as _ul
+                return self._send(200, {"schema": _ul.schema_for_gui(), "library": _ul.listing(),
+                                        "file": os.path.relpath(_ul.USER_LIBRARY_PATH, ROOT).replace(os.sep, "/")})
             if u.path == "/api/design":
                 p = _safe_design_path((q.get("path") or ["config/default_design.yaml"])[0])
                 return self._send(200, design_inputs(p, DEFAULT_ASSUMPTIONS, describe=True))
@@ -968,6 +1015,21 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, run_sizing(p, DEFAULT_ASSUMPTIONS, b.get("overrides") or {},
                                                   self.workdir, token, b.get("studies") or (),
                                                   int(b.get("mc_samples") or 200)))
+            if u.path == "/api/library":
+                # add, change or remove an entry of the personal library (user_library)
+                from . import user_library as _ul
+                act = b.get("action") or "add"
+                try:
+                    if act == "remove":
+                        done = _ul.remove(b.get("kind"), b.get("name"))
+                        return self._send(200, {"removed": done, "library": _ul.listing(),
+                                                "combinations": _combination_map(), "schema": _ul.schema_for_gui()})
+                    _ul.add(b.get("kind"), b.get("name"), b.get("values") or {}, b.get("source"),
+                            b.get("provenance") or "user", replace=bool(b.get("replace")))
+                except _ul.LibraryError as ex:
+                    return self._send(400, {"error": str(ex), "field": ex.field})
+                return self._send(200, {"added": b.get("name"), "kind": b.get("kind"), "library": _ul.listing(),
+                                        "combinations": _combination_map(), "schema": _ul.schema_for_gui()})
             if u.path == "/api/save":
                 base = _safe_design_path(b.get("path") or "config/default_design.yaml")
                 try:

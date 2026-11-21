@@ -137,12 +137,15 @@ def library_choices(assump: dict | None = None, engine_db_path: str | None = Non
                     return None
             fuels = [x for x in props if _role(x) in (None, "fuel")]
             oxes = [x for x in props if _role(x) in (None, "oxidizer")]
+            mine = _custom("propellants")
+            lab = lambda x: f"{x} (my library)" if x in mine else x                     # noqa: E731
             for p in ("stages.*.fuel", "boosters.fuel"):
-                out[p] = [(x, x) for x in fuels]
+                out[p] = [(x, lab(x)) for x in fuels]
             for p in ("stages.*.oxidizer", "boosters.oxidizer"):
-                out[p] = [(x, x) for x in oxes]
+                out[p] = [(x, lab(x)) for x in oxes]
         if combos:
-            out["stages.*.propellant_combination"] = [(x, x) for x in combos]
+            mine_c = _custom("propellant_combinations")
+            out["stages.*.propellant_combination"] = [(x, f"{x} (my library)" if x in mine_c else x) for x in combos]
         # Which tank sits at the bottom. There are exactly two answers, so it is a choice, not a field to
         # type a list into. It keeps its meaning under a common bulkhead: the order still decides which
         # tank is aft, and the book's own S-II example (p.633) shows that moving the heavier tank forward
@@ -152,8 +155,10 @@ def library_choices(assump: dict | None = None, engine_db_path: str | None = Non
             ("oxidizer,fuel", "Oxidiser at the bottom, fuel above"),
         ]
         if solids:
-            out["stages.*.propellant"] = [(x, x) for x in solids]
-            out["boosters.propellant"] = [(x, x) for x in solids]
+            mine_s = _custom("solid_propellants")
+            sl = [(x, f"{x} (my library)" if x in mine_s else x) for x in solids]
+            out["stages.*.propellant"] = sl
+            out["boosters.propellant"] = list(sl)
         if mats:
             # Label each key with the material's own name, so the list reads "SS-301-FH - Stainless steel
             # 301, full hard (AMS 5519)" rather than making the user know what a key stands for.
@@ -162,7 +167,8 @@ def library_choices(assump: dict | None = None, engine_db_path: str | None = Non
                 nm = (lib.get(key) or {}).get("name")
                 nm = nm.get("v") if isinstance(nm, dict) else nm
                 return f"{key} - {nm}" if nm and nm != key else key
-            out["stages.*.tank.material"] = [(x, _label(x)) for x in mats]
+            mine_m = _custom("tank_materials")
+            out["stages.*.tank.material"] = [(x, _label(x) + (" (my library)" if x in mine_m else "")) for x in mats]
     # The launch site library lives in its own file, so it is read whether or not assumptions were passed.
     # A broken library costs the dropdown, not the page: choices() already returns [] on any read failure.
     try:
@@ -190,6 +196,14 @@ def library_choices(assump: dict | None = None, engine_db_path: str | None = Non
     for key in ("stages.*.tank.mass_method_fuel", "stages.*.tank.mass_method_oxidizer"):
         out[key] = _tank_method_choices()
     return out
+
+
+def _custom(section: str) -> set:
+    try:
+        from .user_library import custom_names
+        return custom_names().get(section, set())
+    except Exception:                                                  # noqa: BLE001
+        return set()
 
 
 def combination_map(assump: dict | None = None) -> dict:
@@ -296,12 +310,19 @@ def launch_site_map() -> dict:
         where = f"{abs(lat):.4f} deg {'N' if lat >= 0 else 'S'}"
         if lon is not None:
             where += f", {abs(lon):.4f} deg {'E' if lon >= 0 else 'W'}"
+        caveat = ""
+        if not d.get("_orbital", True):
+            caveat += (" This is a SUBORBITAL range: nothing has been launched to orbit from it, so an orbital "
+                       "design placed here is a hypothetical.")
+        if d.get("_status") == "proposed":
+            caveat += (" This site is PROPOSED and not yet chosen: the coordinate is a stand-in, and the library "
+                       "row says what it stands in for.")
         out[name] = {
             "leaves": {"mission.launch_site.latitude_deg": lat},
             "min_inclination_deg": floor,
             "country": d.get("_country") or "",
             "hint": (f"{where}. A direct ascent from here cannot reach an inclination below "
-                     f"{floor:.2f} deg; range-safety azimuth limits are not modelled."),
+                     f"{floor:.2f} deg; range-safety azimuth limits are not modelled.{caveat}"),
             "source": d.get("_source") or "",
         }
     return out
@@ -373,7 +394,7 @@ LEAF_LABELS: dict = {
     "perigee_altitude_km": "Perigee altitude", "apogee_altitude_km": "Apogee altitude",
     "eccentricity": "Eccentricity", "inclination_deg": "Inclination",
     "site": "Launch site", "latitude_deg": "Launch site latitude", "altitude_m": "Launch site altitude",
-    "azimuth_deg": "Launch azimuth", "include_earth_rotation": "Credit Earth's rotation",
+    "azimuth_deg": "Launch azimuth", "include_earth_rotation": "Include Earth's rotation",
     "staging_delay_s": "Coast between stages", "gravity_mps": "Gravity loss (my own estimate)", "drag_mps": "Drag loss (my own estimate)",
     "steering_mps": "Steering loss (my own estimate)", "other_allowance_mps": "Extra delta-v allowance",
     "design_margin_fraction": "Delta-v margin (fraction of the total)", "model": "Ascent loss method",
@@ -490,7 +511,7 @@ PATH_LABELS: dict = {
     "boosters.nozzle_length_m": "Booster nozzle length",
     "boosters.burn_time_s": "Booster burn time",
     "boosters.residual_fraction": "Booster residual propellant",
-    "mission.wind.profile": "Winds-aloft profile",
+    "mission.wind.profile": "Winds-aloft profile (wind speed against altitude, for the air loads)",
     # --- added at v1.1: a bare "Diameter", "Length" or "Material" does not say of what
     "mission.wind.kind": "What the wind profile represents",
     "fairing.nose_length_over_D": "Fairing nose length / diameter",
@@ -674,7 +695,10 @@ def describe_inputs(items: list, assump: dict | None = None) -> list:
         ch = choices_for(it["path"], lib)
         row = dict(it)
         row.update(label=label_for(it["path"]), section=section, topic=topic,
-                   choices=[{"value": v, "label": lab} for v, lab in ch] if ch else None)
+                   # a choice may carry a third element, the heading it is listed under (the launch sites'
+                   # continent); the page draws those as groups in the dropdown
+                   choices=[dict({"value": c[0], "label": c[1]}, **({"group": c[2]} if len(c) > 2 and c[2] else {}))
+                            for c in ch] if ch else None)
         du = None if ch else display_unit(it["path"])
         if du:
             row.update(display_units=du[0], display_factor=du[1])

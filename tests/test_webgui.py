@@ -995,3 +995,57 @@ def test_the_be4_isp_is_recorded_as_vacuum_and_the_row_says_why():
     assert row["confidence"] == "approximate"
     src = row["source"]
     assert "NOT a verified one" in src and "carries no" in src and "310 s is not adopted" in src
+
+
+# ------------------------------------------------------------------ v1.1 user feedback: sorting, grouping, wording
+def _page():
+    with open(os.path.join(os.path.dirname(webgui.__file__), "gui_static", "index.html"), encoding="utf-8") as fh:
+        return fh.read()
+
+
+def test_every_results_table_sorts_and_keeps_its_totals_at_the_bottom():
+    page = _page()
+    assert "function sortKey(c)" in page and "const sortable = body.length >= 3;" in page
+    assert '/\\b(sum|small)\\b/.test(r.cls' in page, "a total row must not be sorted into the middle"
+    assert "for (const r of order.concat(fixed))" in page
+
+
+def test_the_mass_ledger_filters_by_stage_and_group_and_can_leave_out_propellant():
+    page = _page()
+    for probe in ("S.ledgerFilter", '" leave out propellant"', '"% shown", "% lift-off"', '"Total shown"'):
+        assert probe in page, probe
+
+
+def test_a_grouped_choice_list_is_drawn_with_headings():
+    assert 'box = el("optgroup", {label: grp})' in _page()
+
+
+def test_the_earth_rotation_and_wind_fields_say_what_they_do():
+    from launch_vehicle import gui_meta as M
+    assert M.label_for("mission.launch_site.include_earth_rotation") == "Include Earth's rotation"
+    assert "air loads" in M.label_for("mission.wind.profile")
+    items = webgui.design_inputs(os.path.join(ROOT, "config", "default_design.yaml"),
+                                 os.path.join(ROOT, "config", "engineering_assumptions.yaml"))["items"]
+    d = {i["path"]: i["description"] for i in items}
+    assert "ONLY by the ground and flight loads" in d["mission.wind.profile"]
+    assert "does not change the sizing" in d["mission.wind.profile"]
+    assert d["mission.launch_site.include_earth_rotation"].startswith("Include Earth's rotation")
+
+
+def test_the_ledger_names_the_parts_that_belong_to_no_stage():
+    """The fairing showed as "stage -1" and the payload as a dash: the ledger's internal numbers, printed raw."""
+    page = _page()
+    assert '{0: "Payload", "-1": "Fairing", "-2": "Boosters"}' in page
+    assert "stageName(i.stage), i.group" in page and "i.stage || " not in page
+    from launch_vehicle import report
+    import inspect
+    src = inspect.getsource(report)
+    assert 'where = {0: "payload", -1: "fairing", -2: "boosters"}' in src and 'else "upper"' not in src
+
+
+def test_a_site_that_moves_the_inclination_says_so_in_plain_words_on_both_fields():
+    page = _page()
+    assert "cannot reach an orbit tilted less than" in page and "(a dog-leg), which this tool does not model." in page
+    assert "flying straight up" not in page
+    assert "S.rowNotes[incPath] = `Changed from ${was} deg" in page
+    assert "below that floor" not in page

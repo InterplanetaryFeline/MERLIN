@@ -66,6 +66,9 @@ def load(path: str | None = None) -> list[dict]:
             for k in ("name", "latitude_deg", "region"):
                 if r.get(k) in (None, ""):
                     raise LaunchSiteError(f"launch site row {r.get('name', '?')!r} is missing {k!r}")
+            if r["region"] not in CONTINENTS:
+                raise LaunchSiteError(f"launch site {r['name']!r} has region {r['region']!r}; the region is the "
+                                      f"continent, one of {', '.join(CONTINENTS)}")
             if not -90.0 <= float(r["latitude_deg"]) <= 90.0:
                 raise LaunchSiteError(
                     f"launch site {r['name']!r} has latitude {r['latitude_deg']}, outside [-90, 90]")
@@ -150,32 +153,35 @@ def cascade_map(path: str | None = None) -> dict[str, dict]:
             "_longitude_deg": (None if r.get("longitude_deg") is None else float(r["longitude_deg"])),
             "_country": r.get("country") or r.get("region"),
             "_source": r.get("source") or "",
+            "_orbital": r.get("orbital", True) is not False,
+            "_status": r.get("status") or "",
         }
     return out
 
 
-def choices(path: str | None = None) -> list[tuple[str, str]]:
-    """(value, label) pairs for the GUI dropdown, grouped by region with Custom first.
+#: the order the continents are listed in; a continent the library does not use is simply absent
+CONTINENTS = ("North America", "South America", "Europe", "Africa", "Asia", "Oceania")
 
-    The label carries the latitude, because latitude is the only thing the choice actually changes and a user
-    picking between Andoya at 69.3 and Esrange at 67.9 deg should not have to pick blind.
+
+def choices(path: str | None = None) -> list[tuple]:
+    """(value, label, group) triples for the GUI dropdown: Custom first, then every site under its continent.
+
+    The group is the continent, which the page draws as a heading in the list; within a continent the sites
+    are in alphabetical order, so a user looking for Esrange does not have to know how the file is ordered.
+    The label carries the country and the latitude, because latitude is the only thing the choice actually
+    changes and a user picking between Andoya at 69.3 and Esrange at 67.9 deg should not have to pick blind.
     """
     try:
         rows = load(path)
     except LaunchSiteError:
         return []
-    out: list[tuple[str, str]] = [(CUSTOM, "Custom - type a latitude below")]
-    seen_regions: list[str] = []
-    for r in rows:
-        if r["region"] not in seen_regions:
-            seen_regions.append(r["region"])
-    for region in seen_regions:
-        for r in rows:
-            if r["region"] != region:
-                continue
-            lat = float(r["latitude_deg"])
-            hemi = "N" if lat >= 0 else "S"
-            out.append((r["name"], f"{region} - {r['name']} ({abs(lat):.2f} deg {hemi})"))
+    out: list[tuple] = [(CUSTOM, "Custom - type a latitude below", None)]
+    order = {c: i for i, c in enumerate(CONTINENTS)}
+    for r in sorted(rows, key=lambda r: (order.get(r["region"], len(order)), r["region"], r["name"].lower())):
+        lat = float(r["latitude_deg"])
+        hemi = "N" if lat >= 0 else "S"
+        country = r.get("country") or r["region"]
+        out.append((r["name"], f"{r['name']} - {country} ({abs(lat):.2f} deg {hemi})", r["region"]))
     return out
 
 

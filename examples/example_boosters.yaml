@@ -22,7 +22,7 @@ mission:
     longitude_deg: {v: null, u: deg, d: "Launch site longitude, east positive; used only to place impact points on a map. null = unknown, which gives drop-zone distances but no coordinates", s: "Not stated; type one to place drop zones on a map", t: user}
     altitude_m: {v: 0.0, u: m, d: "Launch site altitude (recorded; not used in v1 performance model)", s: "User", t: user}
     azimuth_deg: {v: null, u: deg, d: "Launch azimuth from North; null = computed from inclination (sin b = cos i / cos lat)", s: "Computed when null", t: assumed}
-    include_earth_rotation: {v: true, u: "-", d: "Credit Earth rotation (justified for a direct eastward-type ascent from a fixed site)", s: "Book Example 3.9 (p.185) method", t: reference}
+    include_earth_rotation: {v: true, u: "-", d: "Include Earth's rotation, by subtracting the launch site's eastward speed from the delta-v the vehicle must supply (justified for a direct, eastward-type ascent from a fixed site)", s: "Book Example 3.9 (p.185) method", t: reference}
   losses:
     model: {v: book_penalty, u: "-", d: "Ascent-loss model: book_penalty (Book Eq. 3:36-3:38 regression, lumped gravity+drag+steering+propulsion) | user (explicit values below)", s: "Book pp.181-182 (RMS error ~260 m/s for LEO)", t: reference}
     staging_delay_s: {v: 3.0, u: s, d: "Ignition/staging delay added to ascent time per stage separation (book: delays 'should be considered')", s: "Assumed; book p.181 says delays should be considered", t: assumed}

@@ -48,3 +48,22 @@ def test_the_method_register_covers_every_method():
     with open(os.path.join(ROOT, "outputs", "engineering_method_register.csv"), encoding="utf-8", newline="") as fh:
         rows = list(csv.reader(fh))
     assert len(rows) - 1 == len(REGISTER), "regenerate the register: it no longer matches method_register.py"
+
+
+def test_the_release_page_is_made_from_this_versions_changelog_section():
+    """The GitHub Release text is that version's section of docs/CHANGELOG.md (tools/release_notes.py). A version
+    with no section would fail the release workflow after the tests had passed, so it fails here first."""
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("release_notes", os.path.join(ROOT, "tools", "release_notes.py"))
+    rn = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(rn)
+    import launch_vehicle
+    with open(os.path.join(ROOT, "docs", "CHANGELOG.md"), encoding="utf-8") as fh:
+        text = fh.read()
+    body = rn.notes(launch_vehicle.__version__, text)
+    assert f"MERLIN-{launch_vehicle.__version__}-windows.zip" in body
+    assert len(rn.section(launch_vehicle.__version__, text)) > 200
+    assert "What changed in v" not in body, "the next version's section leaked into this one"
+    with open(os.path.join(ROOT, ".github", "workflows", "release.yml"), encoding="utf-8") as fh:
+        wf = fh.read()
+    assert "tools/release_notes.py" in wf and "--notes-file release_notes.md" in wf

@@ -3,6 +3,66 @@
 Newest first. Entries are kept as written at each release, so what they say about the tool's limits and numbers
 was true of that version. [`ACCURACY.md`](ACCURACY.md) has the current measurements.
 
+**What changed in v1.2.0 - your own propellants and materials, and the first user feedback**
+
+*Your own propellants and tank materials.* A **Library...** button in the top bar, and a **+ own** button beside
+every fuel, oxidiser, solid propellant, propellant combination and tank-material dropdown, open a form that adds
+an entry of your own to `designs/my_library.yaml` (`user_library.py`). Four kinds can be added:
+
+* a **fuel or oxidiser**: role and density, with the boiling point (blank means storable), insulation and a
+  Table 8.6-style tank coefficient optional;
+* a **propellant combination**: an oxidiser and a fuel that must both be in the library, and the mixture ratio
+  the engines run at, which a stage takes when the combination is picked; reference Isp, c* and the rest optional;
+* a **solid propellant**: the cast density, with c* and the burn-rate exponent optional but given together,
+  since only the internal ballistics reads them;
+* a **tank material**: density, minimum yield, minimum gauge, Young's modulus and thermal expansion, with a blank
+  allowable taking 0.633 x yield, the basis every shipped material uses.
+
+Entries are annotated `{v, u, d, s, t}` like the shipped library, every number is range-checked, a source is
+required, and a shipped name is refused. They appear in the dropdowns marked "(my library)". A saved design carries
+a copy of every entry it uses in a `library:` block, including the fuel and oxidiser a custom combination names, so
+it opens on a computer that has never seen your library; the design's copy wins, so editing the library later does
+not change a design already saved.
+
+*Library values can be changed from the GUI.* Found while building the above: changing ANY value in the
+Propellant library, Material library or Modelling assumptions sections made sizing fail with a KeyError, because
+the change was written into the design instead of the library. It now reaches the library, and a saved design
+keeps the changed field in its `library:` block rather than touching the shipped file.
+
+*Checked by sizing with custom entries.* Clones of a shipped fuel, alloy, solid and combination size the same
+vehicle to the kilogram. Denser fuel gives a shorter, lighter stage; tank volume follows the bulk density of the
+combination (N2O/IPA needs 31 % more than LOX/RP-1, the inverse of their 1,026 and 786 kg/m^3 bulk densities);
+pressure-vessel tank mass falls as allowable stress times weld efficiency over density rises, Al-Li 2195 lightest
+and a 304-class steel heaviest. Solid density changes the motor's length but hardly its mass, because the
+published casing relations work from propellant mass, not case volume; that is a property of those relations.
+
+*Uninsulated cryogens are flagged.* Tank insulation is a switch on the stage, not a property of the propellant, so
+moving a stage to a cryogen - the shipped LH2 or LCH4, or one of your own - left its tank bare and the vehicle too
+light, with nothing said. A new warning, TANKINSUL, says so and offers a one-click switch. No shipped design
+triggers it.
+
+*Launch sites.* Two added at a user's request. **CPSP Ustka**, the Polish Air Force range on the Baltic used for
+suborbital rockets, is marked suborbital-only and sits at the village of Wicko Morskie inside the range, because no
+coordinate is published for the range or its pad. **SUAS Aerospace**, a proposed Irish spaceport whose site is not
+yet chosen, sits at a stand-in coordinate (the company's base near Midleton, County Cork), which the row and the
+dropdown both say. The site list is now grouped by continent, alphabetical within each, so Kourou is under South
+America, and every entry names its country.
+
+*Clearer fields.* "Credit Earth's rotation" is now "Include Earth's rotation". The winds-aloft profile says what it
+is and that only the loads analysis reads it. When picking a site has to raise the orbit inclination, the note says
+why in plain words, on the inclination field as well as on the site.
+
+*Interactive tables.* Every results table with three or more rows sorts by a click on its heading (largest first,
+smallest first, original order), with totals kept at the bottom. The mass ledger can be filtered to one stage or
+one group, can leave the propellant out, and shows each item's share of what is shown and of the lift-off mass. Its
+stage column names the payload, the fairing and the strap-ons instead of printing the internal numbers 0, -1 and -2,
+where the fairing read as "stage -1"; the report's ledger, which called both the fairing and the boosters "upper",
+does the same.
+
+*Nothing in the engineering changed for an existing design.* The default design, the examples and the check cases
+size to the same lift-off masses as v1.1.0: the TSTO example gives 397,246 kg with the optimised split and 410,003 kg
+as written, under both versions.
+
 **What changed in v1.1.0 - drag from the vehicle's own geometry, and a vertical rise that is vertical**
 
 *Drag is estimated from the shape being flown.* Every design used to fly on the Titan II curve of book Fig. 6.13,

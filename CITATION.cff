@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use this software or its results, you must credit it as the LICENSE requires. Please cite it as below."
 title: "MERLIN: Mass Estimation Relationships for Launch vehicle Initial sizing"
 type: software
-version: 1.1.0
+version: 1.2.0
 authors:
   - given-names: Szymon
     family-names: Błażejewicz
