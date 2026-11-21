@@ -63,6 +63,10 @@ does the same.
 size to the same lift-off masses as v1.1.0: the TSTO example gives 397,246 kg with the optimised split and 410,003 kg
 as written, under both versions.
 
+*Saving to a folder on another drive no longer fails.* The first release run of this version failed on the GitHub
+build machine, whose project is on drive D: and whose temporary folder is on C:: showing a saved design's path
+relative to the project raised an error across drives. Such a path is now shown in full.
+
 **What changed in v1.1.0 - drag from the vehicle's own geometry, and a vertical rise that is vertical**
 
 *Drag is estimated from the shape being flown.* Every design used to fly on the Titan II curve of book Fig. 6.13,

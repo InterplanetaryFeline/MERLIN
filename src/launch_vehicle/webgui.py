@@ -469,7 +469,7 @@ def trade_study_files() -> list:
                 continue
             blk = (doc or {}).get("trade_study")
             if isinstance(blk, dict):
-                out.append({"path": os.path.relpath(p, ROOT).replace(os.sep, "/"),
+                out.append({"path": _rel(p),
                             "name": blk.get("name") or name,
                             "n_sweeps": len(blk.get("sweep") or [])})
     return out
@@ -730,7 +730,7 @@ def write_draft(doc: dict, stem: str, header: str = "") -> str:
         os.unlink(path)
         raise
     _sweep_drafts()
-    return os.path.relpath(path, ROOT).replace(os.sep, "/")
+    return _rel(path)
 
 
 def _sweep_drafts():
@@ -780,7 +780,7 @@ def save_design(base_path, overrides, name, description="", filename=None, targe
             raise ConfigError("give the configuration a name before saving")
         path = os.path.join(SAVE_DIR, stem + ".yaml")
         if os.path.exists(path) and not replace:
-            raise DesignExists(os.path.relpath(path, ROOT).replace(os.sep, "/"))
+            raise DesignExists(_rel(path))
     with open(base_path, encoding="utf-8") as fh:
         raw = _yaml.load(fh, Loader=_Loader)
     apply_overrides(raw, overrides, sources=override_sources)
@@ -816,7 +816,7 @@ def save_design(base_path, overrides, name, description="", filename=None, targe
         _unlink(tmp)
         raise
     os.replace(tmp, path)
-    rel = os.path.relpath(path, ROOT).replace(os.sep, "/")
+    rel = _rel(path)
     return {"path": rel, "name": name or stem, "n_overrides": len(overrides or {}),
             # the page binds to this and shows it, so plain Save knows where to write next time
             "bound": True, "writable": is_writable_design(path)}
@@ -825,6 +825,16 @@ def save_design(base_path, overrides, name, description="", filename=None, targe
 import re as _re
 
 _SAFE = _re.compile(r"[^A-Za-z0-9_.-]+")
+
+
+def _rel(path) -> str:
+    """A path as the page shows it: relative to the project, with forward slashes. On Windows a folder on another
+    drive has no relative path at all (os.path.relpath raises), which the GitHub build machine hit with the
+    project on D: and temporary files on C:; such a path is shown in full instead of failing the save."""
+    try:
+        return os.path.relpath(path, ROOT).replace(os.sep, "/")
+    except ValueError:
+        return os.path.abspath(path).replace(os.sep, "/")
 
 
 def _safe_name(name: str) -> str:
@@ -900,7 +910,7 @@ class Handler(BaseHTTPRequestHandler):
             if u.path == "/api/library":
                 from . import user_library as _ul
                 return self._send(200, {"schema": _ul.schema_for_gui(), "library": _ul.listing(),
-                                        "file": os.path.relpath(_ul.USER_LIBRARY_PATH, ROOT).replace(os.sep, "/")})
+                                        "file": _rel(_ul.USER_LIBRARY_PATH)})
             if u.path == "/api/design":
                 p = _safe_design_path((q.get("path") or ["config/default_design.yaml"])[0])
                 return self._send(200, design_inputs(p, DEFAULT_ASSUMPTIONS, describe=True))

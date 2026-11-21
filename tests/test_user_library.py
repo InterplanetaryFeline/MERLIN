@@ -27,12 +27,16 @@ class _Scratch:
 
     def __enter__(self):
         self.old = ul.USER_LIBRARY_PATH
-        self.dir = tempfile.mkdtemp()
+        # inside the project (outputs/ is git-ignored), not the system temp folder: on the GitHub build machine
+        # the project is on D: and the temp folder on C:, and a saved design's path is shown relative to the project
+        self.dir = tempfile.mkdtemp(dir=os.path.join(ROOT, "outputs"))
         ul.USER_LIBRARY_PATH = os.path.join(self.dir, "my_library.yaml")
         return self
 
     def __exit__(self, *exc):
+        import shutil
         ul.USER_LIBRARY_PATH = self.old
+        shutil.rmtree(self.dir, ignore_errors=True)
         return False
 
 
@@ -247,3 +251,18 @@ def test_a_cryogenic_fuel_in_an_uninsulated_tank_is_flagged_with_the_switch_that
         assert fixed.stages[0].components["Tank insulation (fuel)"] > 0
     assert not [i for i in size_vehicle(load_design(D, A), keep_history=False).issues if i.code == "TANKINSUL"], \
         "the default design insulates its LOX and has a storable fuel, so nothing to say"
+
+
+def test_a_path_on_another_drive_is_shown_in_full_instead_of_failing():
+    """What failed the v1.2.0 release run: os.path.relpath raises across Windows drives."""
+    real = os.path.relpath
+
+    def cross_drive(*_a, **_k):
+        raise ValueError("path is on mount 'C:', start on mount 'D:'")
+    os.path.relpath = cross_drive
+    try:
+        got = webgui._rel(os.path.join(tempfile.gettempdir(), "x.yaml"))
+    finally:
+        os.path.relpath = real
+    assert got.endswith("/x.yaml") and "\\" not in got
+    assert webgui._rel(os.path.join(ROOT, "designs", "a.yaml")) == "designs/a.yaml"
