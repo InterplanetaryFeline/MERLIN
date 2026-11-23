@@ -93,6 +93,10 @@ def _draw_tank(ax, seg, fc, x0=0.0):
         ax.add_patch(Arc((x0, zt), 2 * R, 2 * hd, theta1=0, theta2=180, ec="k", lw=0.8, zorder=3))
         ax.add_patch(Ellipse((x0, zt), 2 * R, 2 * hd, fc=fc, ec="none", zorder=1))
     if g.bulkhead == "lower_owner":
+        # the shared dome bulges into the tank above and is full of THIS tank's propellant, so it is filled over
+        # that tank's barrel (zorder 2) rather than only outlined
+        th = np.linspace(0.0, math.pi, 91)
+        _poly(ax, [(x0 + R * math.cos(a), seg.z1 + g.h_dome * math.sin(a)) for a in th], fc, ec="none", z=2.4)
         ax.add_patch(Arc((x0, seg.z1), 2 * R, 2 * g.h_dome, theta1=0, theta2=180, ec="k", lw=1.1, zorder=4))
     if getattr(g, "R_bore", 0.0) > 0:          # solid motor: show the cast grain and its central bore
         _draw_grain(ax, seg, x0)

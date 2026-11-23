@@ -170,3 +170,35 @@ def test_the_governing_station_marked_is_the_worst_bending_moment():
     texts = " ".join(t.get_text() for a in fig.axes for t in a.texts)
     assert f"z = {worst.z_m:.1f} m" in texts, texts[:200]
     matplotlib.pyplot.close(fig)
+
+
+def test_the_vehicle_beside_the_loads_is_drawn_to_scale():
+    """One metre across must be one metre up. The strip had a fixed width, so a slender vehicle looked squat."""
+    res, _tr, cases = flown()
+    fig = charts.draw_loads(cases, None, None, res=res)
+    ax = fig.axes[0]
+    box, (w, h) = ax.get_position(), fig.get_size_inches()
+    (x0, x1), (z0, z1) = ax.get_xlim(), ax.get_ylim()
+    across, up = (x1 - x0) / (box.width * w), (z1 - z0) / (box.height * h)
+    assert across == pytest.approx(up, rel=0.02)
+    half = 0.5 * max(res.geometry.max_span_m, res.geometry.max_diameter)
+    assert x0 <= -half and x1 >= half, "the strip crops the vehicle"
+    matplotlib.pyplot.close(fig)
+
+
+def test_the_shared_dome_is_coloured_as_the_propellant_below_it():
+    """A common bulkhead bulges into the upper tank; the bulge was outlined but kept the upper tank's colour."""
+    from launch_vehicle import schematic_2d as s2
+    from matplotlib.colors import to_rgba
+    res = size_vehicle(load_design(os.path.join(ROOT, "validation", "saturn5.yaml"), ASSUMP), keep_history=False)
+    lower = next(s for s in res.geometry.segments if s.kind == "tank" and s.tank.bulkhead == "lower_owner")
+    fig, ax = matplotlib.pyplot.subplots()
+    s2._draw_segments(ax, res.geometry.segments)
+    ax.set_xlim(-60.0, 60.0)
+    ax.set_ylim(0.0, res.geometry.total_length)
+    for frac in (0.05, 0.5, 0.95):                  # just above the joint, half way up, just under the crown
+        at = ax.transData.transform((0.0, lower.z1 + frac * lower.tank.h_dome))
+        hit = [p for p in ax.patches if p.get_facecolor()[3] > 0 and p.contains_point(at)]
+        top = max(hit, key=lambda p: p.get_zorder())
+        assert top.get_facecolor() == to_rgba(s2.COL["tank_" + lower.tank.role]), frac
+    matplotlib.pyplot.close(fig)

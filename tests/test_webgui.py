@@ -1049,3 +1049,13 @@ def test_a_site_that_moves_the_inclination_says_so_in_plain_words_on_both_fields
     assert "flying straight up" not in page
     assert "S.rowNotes[incPath] = `Changed from ${was} deg" in page
     assert "below that floor" not in page
+
+
+def test_table_columns_of_words_sort_alphabetically():
+    """Stripping the letters off a word left "", which JavaScript reads as 0, so every name tied. A cell is a number
+    only if it has digits; a column of words goes A to Z on the first click."""
+    page = _page()
+    assert "function sortCompare(x, y)" in page and "const d = sortCompare(x, y);" in page
+    assert "numeric: true" in page, "Stage 2 goes before Stage 10"
+    assert 'const first = words ? "asc" : "desc"' in page
+    assert "{txt: t.toLowerCase()}" not in page

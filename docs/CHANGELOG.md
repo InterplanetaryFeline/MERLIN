@@ -3,6 +3,15 @@
 Newest first. Entries are kept as written at each release, so what they say about the tool's limits and numbers
 was true of that version. [`ACCURACY.md`](ACCURACY.md) has the current measurements.
 
+**What changed in v1.2.1 - drawing and table fixes**
+
+* **Common bulkheads.** The shared dome that bulges into the upper tank is now filled with the lower tank's colour,
+  in the 2D drawings. It was outlined only, so part of the lower tank showed the upper propellant's colour.
+* **Sorting by words.** A column of names sorts alphabetically, A to Z on the first click, with "Stage 2" before
+  "Stage 10". Every word used to count as zero, so clicking did nothing.
+* **Loads figure.** The vehicle beside the curves is drawn to scale. It had a fixed width, which made a slender
+  vehicle look too fat (about 2.7 times, for the default rocket).
+
 **What changed in v1.2.0 - your own propellants and materials, and the first user feedback**
 
 *Your own propellants and tank materials.* A **Library...** button in the top bar, and a **+ own** button beside

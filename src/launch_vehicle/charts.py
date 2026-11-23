@@ -240,6 +240,11 @@ def _at(tr, t_s, series):
     return series[i]
 
 
+def _strip_half_width(res):
+    """Half the width of vehicle to show: its widest point, boosters included, with a little air."""
+    return 1.1 * 0.5 * max(res.geometry.max_span_m, res.geometry.max_diameter)
+
+
 def vehicle_strip(ax, res, z_lo=None, z_hi=None):
     """Draw the inboard profile upright on `ax`, to scale, sharing the caller's z axis.
 
@@ -256,8 +261,8 @@ def vehicle_strip(ax, res, z_lo=None, z_hi=None):
             s2._draw_engines(ax, res, sr, 0.0)
     if geom.booster_segments and res.spec.boosters is not None:
         s2._draw_boosters(ax, res)
-    half = 0.5 * max(geom.max_span_m, geom.max_diameter)
-    ax.set_xlim(-1.35 * half, 1.35 * half)
+    half = _strip_half_width(res)
+    ax.set_xlim(-half, half)
     ax.set_ylim(z_lo if z_lo is not None else -0.01 * geom.total_length,
                 z_hi if z_hi is not None else 1.01 * geom.total_length)
     ax.set_xticks([])
@@ -294,9 +299,20 @@ def draw_loads(cases: dict, path_png=None, path_pdf=None, title="", res=None):
                "max_axial": "#b07d1a"}
     n_panels = 3
     if res is not None:
-        fig, axs = plt.subplots(1, n_panels + 1, figsize=(12.6, 8.8), sharey=True,
-                                gridspec_kw=dict(width_ratios=[0.62, 1, 1, 1], wspace=0.10))
+        # The strip is given the width the vehicle needs at the height of the panels, so that one metre across is
+        # one metre up. At a fixed width a slender vehicle was drawn several times too fat. It always keeps
+        # room for the joint names to the right of the vehicle, where they are written.
+        w_in, h_in, left, right, top, bottom = 12.6, 10.5, 0.075, 0.985, 0.945, 0.105
+        gap_in = 0.2
+        z_span = 1.02 * res.geometry.total_length
+        m_per_in = z_span / (h_in * (top - bottom))
+        strip_in = min(max(2.0 * _strip_half_width(res) / m_per_in + 0.8, 1.6), 5.0)
+        panel_in = (w_in * (right - left) - strip_in - n_panels * gap_in) / n_panels
+        fig, axs = plt.subplots(1, n_panels + 1, figsize=(w_in, h_in), sharey=True,
+                                gridspec_kw=dict(width_ratios=[strip_in] + [panel_in] * n_panels,
+                                                 wspace=gap_in / ((strip_in + n_panels * panel_in) / (n_panels + 1))))
         vehicle_strip(axs[0], res)
+        axs[0].set_xlim(-_strip_half_width(res), -_strip_half_width(res) + strip_in * m_per_in)
         axes = list(axs[1:])
     else:
         fig, axs = plt.subplots(1, n_panels, figsize=(11.0, 8.0), sharey=True,
@@ -355,7 +371,10 @@ def draw_loads(cases: dict, path_png=None, path_pdf=None, title="", res=None):
     # Placed by hand rather than by tight_layout: the vehicle strip shares its y axis with the panels but
     # carries no x axis of its own, which tight_layout cannot size and warns about. Explicit margins also
     # keep the strip the same width whatever the longest tick label in the panels turns out to be.
-    fig.subplots_adjust(left=0.075, right=0.985, top=0.945, bottom=0.115)
+    if res is not None:
+        fig.subplots_adjust(left=left, right=right, top=top, bottom=bottom)
+    else:
+        fig.subplots_adjust(left=0.075, right=0.985, top=0.945, bottom=0.115)
     if path_png:
         fig.savefig(path_png, dpi=150)
     if path_pdf:

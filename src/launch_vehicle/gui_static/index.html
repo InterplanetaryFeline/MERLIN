@@ -1400,8 +1400,17 @@ function stageName(n) {
 function sortKey(c) {
   const t = (c instanceof Node ? c.textContent : String(c).replace(/<[^>]*>/g, "")).trim();
   if (t === "" || t === "–" || t === "-" || t === "—") return {blank: true};
-  const n = Number(t.replace(/[\u202f\u00a0 ,]/g, "").replace(/^\+/, "").replace(/[a-zA-Z%°\/\[\]·²³]+.*$/, ""));
-  return Number.isFinite(n) ? {num: n} : {txt: t.toLowerCase()};
+  /* A number, with a unit after it or not ("9 414 m/s", "2.52 %", "1.2e5 N"). The digits have to be there:
+     stripping the letters off a word leaves "", which Number() reads as 0, so every name used to tie. */
+  const m = /^\$?([+\-\u2212]?(?:\d[\d\u202f\u00a0 ,]*(?:\.\d+)?|\.\d+)(?:[eE][+\-]?\d+)?)\s*(?:$|[a-zA-Zµ%°\/\[(·²³×"])/.exec(t);
+  const n = m ? Number(m[1].replace(/[\u202f\u00a0 ,]/g, "").replace("\u2212", "-")) : NaN;
+  return Number.isFinite(n) ? {num: n} : {txt: t};
+}
+/* numbers by size, before words; words alphabetically, with "Stage 2" before "Stage 10" */
+function sortCompare(x, y) {
+  if (x.num !== undefined && y.num !== undefined) return x.num - y.num;
+  if (x.num !== undefined || y.num !== undefined) return x.num !== undefined ? -1 : 1;
+  return x.txt.localeCompare(y.txt, undefined, {numeric: true, sensitivity: "base"});
 }
 /* Every results table with three or more rows sorts by a click on its heading: largest first, then smallest
    first, then back to the order the tool wrote it in. A total or note row stays at the bottom. The choice is
@@ -1420,19 +1429,22 @@ function table(headers, rows, numeric) {
     order.sort((a, b) => {
       const x = sortKey(cell(a)), y = sortKey(cell(b));
       if (x.blank || y.blank) return (x.blank ? 1 : 0) - (y.blank ? 1 : 0);
-      const d = (x.num !== undefined && y.num !== undefined) ? x.num - y.num
-              : String(x.txt ?? x.num).localeCompare(String(y.txt ?? y.num));
+      const d = sortCompare(x, y);
       return st.dir === "desc" ? -d : d;
     });
   }
   headers.forEach((x, i) => {
     const th = el("th", {class: ((numeric || []).includes(i) ? "n" : "") + (sortable ? " sortable" : ""), html: x});
     if (sortable) {
-      th.title = "Click to sort by this column: largest first, then smallest first, then the original order";
+      const keys = body.map(r => sortKey((Array.isArray(r) ? r : r.cells)[i])).filter(k => !k.blank);
+      const words = 2 * keys.filter(k => k.txt !== undefined).length > keys.length;
+      const first = words ? "asc" : "desc", second = words ? "desc" : "asc";
+      th.title = words ? "Click to sort by this column: A to Z, then Z to A, then the original order"
+        : "Click to sort by this column: largest first, then smallest first, then the original order";
       if (st && st.col === i) th.append(el("span", {class: "arr", text: st.dir === "desc" ? "▼" : "▲"}));
       th.addEventListener("click", () => {
         const now = S.sorts[key];
-        S.sorts[key] = !now || now.col !== i ? {col: i, dir: "desc"} : now.dir === "desc" ? {col: i, dir: "asc"} : null;
+        S.sorts[key] = !now || now.col !== i ? {col: i, dir: first} : now.dir === first ? {col: i, dir: second} : null;
         if (!S.sorts[key]) delete S.sorts[key];
         t.replaceWith(table(headers, rows, numeric));
       });
