@@ -932,6 +932,23 @@ class Handler(BaseHTTPRequestHandler):
                     body = f.read()
                 return self._send(200, body, "application/octet-stream",
                                   {"Content-Disposition": f'attachment; filename="vehicle.{fmt}"'})
+            if u.path in ("/api/ksp", "/api/ksp_info"):
+                # Kerbal Space Program export (ksp_export): the check and the install status, or the zip
+                st = self._state(q)
+                from . import ksp_export as kx
+                try:
+                    ex = kx.export(st["res"], os.path.join(st["dir"], "ksp"))
+                except kx.KSPExportError as err:
+                    return self._send(200 if u.path == "/api/ksp_info" else 409, {"error": str(err)})
+                if u.path == "/api/ksp":
+                    with open(ex["files"]["zip"], "rb") as f:
+                        body = f.read()
+                    return self._send(200, body, "application/zip", {
+                        "Content-Disposition": f'attachment; filename="{os.path.basename(ex["files"]["zip"])}"'})
+                given = (q.get("ksp_dir") or [""])[0].strip()
+                kdir = given or kx.find_ksp()
+                return self._send(200, {"check": ex["check"], "ship": ex["ship"], "target": kx.KSP_TARGET,
+                                        "ksp": kx.ksp_status(kdir)})
             if u.path == "/api/model_checks":
                 # Everything v0.15-v0.16 measured about the model itself, in one place: how reliable this
                 # vehicle's engine clusters are (R24), how well the engine-mass relation does against real
@@ -1040,6 +1057,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, {"error": str(ex), "field": ex.field})
                 return self._send(200, {"added": b.get("name"), "kind": b.get("kind"), "library": _ul.listing(),
                                         "combinations": _combination_map(), "schema": _ul.schema_for_gui()})
+            if u.path == "/api/ksp_install":
+                st = self._state({"token": [b.get("token") or ""]})
+                from . import ksp_export as kx
+                try:
+                    ex = kx.export(st["res"], os.path.join(st["dir"], "ksp"))
+                    kdir = (b.get("ksp_dir") or "").strip() or kx.find_ksp()
+                    done = kx.install(ex, kdir or "", b.get("save") or None)
+                except kx.KSPExportError as err:
+                    return self._send(400, {"error": str(err)})
+                return self._send(200, {"installed": done, "ship": ex["ship"]})
             if u.path == "/api/save":
                 base = _safe_design_path(b.get("path") or "config/default_design.yaml")
                 try:

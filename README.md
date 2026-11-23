@@ -63,7 +63,9 @@ python -m launch_vehicle.main family --help
   profile; shell stress and buckling; aerodynamics and stability; solid internal ballistics; payload environments;
   development cost; reliability; Monte-Carlo uncertainty; jettison drop zones.
 * **Outputs:** a self-contained design report, an Excel workbook with live cross-check formulas, dimensioned
-  drawings, DXF, STL, OBJ and 3MF exports, KML and GeoJSON drop zones, and STEP through an optional geometry kernel.
+  drawings, DXF, STL, OBJ and 3MF exports, KML and GeoJSON drop zones, and STEP through an optional geometry kernel;
+  and a flyable Kerbal Space Program export (KSP 1.12.5 with Real Solar System, liquid and solid stages) with MERLIN's
+  masses, thrust and Isp ([docs/KSP_EXPORT.md](docs/KSP_EXPORT.md)).
 
 ## What it does not do
 

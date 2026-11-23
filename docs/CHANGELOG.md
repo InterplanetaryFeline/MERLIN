@@ -3,6 +3,19 @@
 Newest first. Entries are kept as written at each release, so what they say about the tool's limits and numbers
 was true of that version. [`ACCURACY.md`](ACCURACY.md) has the current measurements.
 
+**What changed in v1.3.0 - export to Kerbal Space Program** (not yet released)
+
+*Export to Kerbal Space Program.* A new **Export to Kerbal Space Program** button on the Summary tab
+(`ksp_export.py`) turns the sized vehicle into KSP parts of its own and a craft file, for KSP 1.12.5 with Real
+Solar System. Every segment, tank load and engine is generated from the design. KSP therefore flies MERLIN's dry
+masses, usable propellant, vacuum thrust, vacuum Isp, Isp-versus-pressure line and mixture ratio, and the panel
+shows each beside MERLIN's before anything is written.
+
+The export is installed straight into a save of the detected game, or downloaded as a zip. The default
+two-stage rocket was launched in KSP and read back at 410,002.8 kg against MERLIN's 410,002.7 kg, and flown to
+orbit along MERLIN's own trajectory. [`KSP_EXPORT.md`](KSP_EXPORT.md) has the measurements and what they do
+not show. Solid stages are exported too: the casing holds the grain, and the nozzle is an engine that cannot be throttled or shut down, burning for MERLIN's burn time. Four stock launch clamps hold the vehicle on the pad. Strap-on boosters are refused for now, with the reason.
+
 **What changed in v1.2.0 - your own propellants and materials, and the first user feedback**
 
 *Your own propellants and tank materials.* A **Library...** button in the top bar, and a **+ own** button beside

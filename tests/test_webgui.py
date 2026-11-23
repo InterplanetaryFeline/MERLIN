@@ -9,6 +9,7 @@ import os
 import socket
 import threading
 import urllib.error
+import urllib.parse
 import urllib.request
 
 import pytest
@@ -1049,3 +1050,24 @@ def test_a_site_that_moves_the_inclination_says_so_in_plain_words_on_both_fields
     assert "flying straight up" not in page
     assert "S.rowNotes[incPath] = `Changed from ${was} deg" in page
     assert "below that floor" not in page
+
+
+def test_ksp_export_is_offered_checked_and_downloadable_from_the_gui():
+    """The KSP export (ksp_export) is reachable from the page: a button, the check MERLIN-vs-export, and the zip."""
+    with open(os.path.join(ROOT, "src", "launch_vehicle", "gui_static", "index.html"), encoding="utf-8") as fh:
+        html = fh.read()
+    assert "Export to Kerbal Space Program" in html and "/api/ksp_info" in html and "/api/ksp_install" in html
+    r = _post("/api/size", {"path": "config/default_design.yaml", "overrides": {}, "studies": []})
+    info = _get(f"/api/ksp_info?token={r['token']}&ksp_dir=" + urllib.parse.quote(os.path.join(ROOT, "no_such_ksp")))
+    assert info["check"]["export_glom_kg"] == pytest.approx(r["glom_kg"], rel=1e-9)
+    assert info["ksp"]["found"] is False and info["ksp"]["problems"]
+    body, hdr = _get(f"/api/ksp?token={r['token']}", raw=True)
+    assert body.startswith(b"PK\x03\x04") and "_KSP.zip" in hdr["Content-Disposition"]
+
+
+def test_installing_into_a_folder_that_is_not_ksp_is_refused_with_a_reason():
+    r = _post("/api/size", {"path": "config/default_design.yaml", "overrides": {}, "studies": []})
+    with pytest.raises(urllib.error.HTTPError) as e:
+        _post("/api/ksp_install", {"token": r["token"], "ksp_dir": os.path.join(ROOT, "no_such_ksp"), "save": ""})
+    assert e.value.code == 400
+    assert "not a Kerbal Space Program folder" in json.loads(e.value.read())["error"]

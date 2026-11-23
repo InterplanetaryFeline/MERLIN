@@ -279,7 +279,7 @@ const S = {items: [], meta: {}, overrides: {}, res: null, baseline: null, tab: "
               what actually decided the number instead of crediting the user with a search's answer. */
            overrideSources: {},
            hz: null, hzAz: null, hzSpeed: null, hzGamma: null, hzWidth: null,
-           study: null, meta_trades: [], sens: null};
+           study: null, meta_trades: [], sens: null, ksp: null};
 
 /* ------------------------------------------------------------------- CAD downloads */
 /* One button per format the server says it can write. The exact-solid formats need a geometry
@@ -311,6 +311,79 @@ function cadNote() {
       + `revolution, and cannot be sectioned or measured as solids. 'pip install cadquery' adds `
       + `STEP and BREP. 3MF is the one to prefer over STL - it records its units and part names.`;
   return el("p", {class: "note", text: txt, style: "margin:6px 0 0;font-size:11px;opacity:.72"});
+}
+
+/* ------------------------------------------------------- Kerbal Space Program export */
+/* The vehicle as KSP parts of its own (ksp_export). The panel shows MERLIN beside what the export contains,
+   stage by stage, so anyone can see the KSP rocket is the sized one before flying it; then either a zip to
+   unzip into the game folder, or a direct install into a save of the detected game. */
+async function kspOpen(r, kspDir) {
+  S.ksp = {loading: true, token: r.token};
+  render();
+  try {
+    const q = kspDir ? `&ksp_dir=${encodeURIComponent(kspDir)}` : "";
+    S.ksp = Object.assign(await api(`/api/ksp_info?token=${r.token}${q}`), {token: r.token});
+  } catch (e) { S.ksp = {error: e.message, token: r.token}; }
+  render();
+}
+function kspPanel(r) {
+  const K = S.ksp;
+  if (!K || K.token !== r.token) return el("span");
+  const box = el("div", {id: "kspPanel", style: "margin-top:10px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:6px"});
+  box.append(el("h3", {class: "sect", text: "Export to Kerbal Space Program"}));
+  if (K.loading) { box.append(el("p", {class: "small", text: "Building the KSP parts…"})); return box; }
+  if (K.error) { box.append(el("p", {class: "lvl-ERROR", text: "This vehicle cannot be exported yet: " + K.error})); return box; }
+  box.append(el("p", {class: "small", text: `Every part, propellant load and engine is generated from this design, `
+    + `so KSP flies MERLIN's numbers. Needs ${K.target}; Ferram Aerospace Research is optional. `
+    + `Not from MERLIN: a 20 kNm reaction wheel and electric charge in the top stage's forward skirt, a 5° engine gimbal, `
+    + `and four launch clamps that hold the vehicle on the pad and stay there at lift-off.`}));
+  const c = K.check, rows = [["Lift-off mass [kg]", fmt(c.merlin_glom_kg), fmt(c.export_glom_kg)]];
+  for (const w of c.rows) {
+    rows.push([`Stage ${w.stage} dry mass, with residuals [kg]`, fmt(w.merlin_dry_kg), fmt(w.export_dry_kg)]);
+    rows.push([`Stage ${w.stage} usable propellant [kg]`, fmt(w.merlin_usable_kg), fmt(w.export_usable_kg)]);
+    rows.push([`Stage ${w.stage} vacuum thrust, ${w.n_engines} engine${w.n_engines > 1 ? "s" : ""} [kN]`,
+               fmt(w.merlin_thrust_vac_kN, 1), fmt(w.export_thrust_vac_kN, 1)]);
+    rows.push([`Stage ${w.stage} vacuum Isp [s]`, fmt(w.merlin_isp_vac_s, 1), fmt(w.export_isp_vac_s, 1)]);
+    if (w.solid) rows.push([`Stage ${w.stage} solid grain`, w.propellant, w.propellant]);
+    else rows.push([`Stage ${w.stage} mixture ratio O/F`, fmt(w.merlin_of, 3), fmt(w.export_of, 3)]);
+    rows.push([`Stage ${w.stage} burn time, with start-up propellant [s]`, fmt(w.merlin_burn_s, 1), fmt(w.export_burn_s, 1)]);
+  }
+  const tb = table(["Quantity", "MERLIN", "In the KSP export"], rows, [1, 2]);
+  box.append(tb);
+  const k = K.ksp || {};
+  const dir = el("input", {type: "text", value: k.path || "", style: "width:420px",
+                           placeholder: "Kerbal Space Program folder (holds GameData and saves)"});
+  const save = el("select", {});
+  save.append(el("option", {value: "", text: "No save: the game's Stock vessels list"}));
+  for (const n of (k.saves || [])) save.append(el("option", {value: n, text: n}));
+  /* no save is picked for you: a craft dropped into a career save by an unread default is a surprise */
+  const msg = el("p", {class: "small", id: "kspMsg"});
+  box.append(el("div", {style: "display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:6px"}, [
+    el("label", {class: "small", text: "Game folder"}), dir,
+    el("button", {text: "Look again", title: "Check this folder for the game and its saves",
+                  onclick: () => kspOpen(r, dir.value.trim())})]));
+  if (k.found) {
+    const mods = Object.entries(k.mods || {}).map(([n, ok]) => `${ok ? "✓" : "✗"} ${n}`).join("   ");
+    box.append(el("p", {class: "small", text: "Installed: " + mods}));
+  }
+  for (const pr of (k.problems || [])) box.append(el("p", {class: "lvl-WARNING small", text: pr}));
+  box.append(el("div", {style: "display:flex;gap:7px;flex-wrap:wrap;align-items:center;margin-top:6px"}, [
+    el("label", {class: "small", text: "Put the craft in save"}), save,
+    el("button", {text: "Install into KSP", disabled: k.found ? null : "disabled",
+      title: "Copies the parts into GameData/MERLIN_Export and the craft into the save's VAB. Nothing else is touched.",
+      onclick: async () => {
+        msg.textContent = "Installing…";
+        try {
+          const j = await api("/api/ksp_install", {method: "POST", headers: {"Content-Type": "application/json"},
+            body: JSON.stringify({token: r.token, ksp_dir: dir.value.trim(), save: save.value})});
+          msg.textContent = `Installed. Parts: ${j.installed.gamedata}. Craft: ${j.installed.craft}. `
+            + `Restart KSP if it is running (it reads parts only at start-up), then load "${j.ship}" in the VAB.`;
+        } catch (e) { msg.textContent = "Not installed: " + e.message; }
+      }}),
+    el("button", {text: "Download zip", title: "The same files, to unzip into the game folder yourself",
+                  onclick: () => location.href = `/api/ksp?token=${r.token}`})]));
+  box.append(msg);
+  return box;
 }
 
 /* ------------------------------------------------------------------ values */
@@ -2013,8 +2086,12 @@ function render() {
       el("button", {text: "Download report", onclick: () => location.href = `/api/report?token=${r.token}&download=1`}),
       el("button", {text: "Download workbook", onclick: () => location.href = `/api/workbook?token=${r.token}`}),
       ...cadButtons(r),
+      el("button", {text: "Export to Kerbal Space Program", id: "kspBtn",
+                    title: "Generate this vehicle as KSP parts and a craft file, with MERLIN's masses, thrust and Isp",
+                    onclick: () => kspOpen(r)}),
     ]));
     v.append(cadNote());
+    v.append(kspPanel(r));
   }
   else if (S.tab === "budget") {
     v.append(el("h2", {class: "sect", text: "Velocity budget"}));
