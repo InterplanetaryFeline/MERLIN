@@ -25,27 +25,30 @@ used exactly as written. When no split gives a vehicle that sizes, yours is used
 optimisation was requested but not applied. A design file with no `optimise_dv_split` key is still treated as off. **Your design file is not modified** until you save it; the GUI writes the applied
 split into the input panel as a changed value with its revert arrow, like any other override.
 
-Off by default on purpose. The staging split is a decision the designer makes, and a tool that silently
-re-made it would be reporting someone else's design.
+It was off by default until v1.1 and is on now because the published accuracy figures are for the optimised split.
+**The lightest vehicle is not necessarily one that flies.** The search minimises mass with the regression's ascent
+losses, and the simulated ascent, one continuous burn straight to the orbit, can lose far more: on the shipped default, at
+35/65, it falls about 320 m/s short of 400 km. A parking orbit would recover it, but the model cannot fly one (USER_MANUAL
+7.5). Read the Trajectory tab's verdict before using the split.
+
 
 ## 2. What you can optimise towards
 
 | `optimise_objective` | Minimises / maximises | Notes |
 |---|---|---|
 | `glom` *(default)* | **Minimises** gross lift-off mass at the design payload | The usual question, and the fastest. |
-| `cost` | **Minimises** development cost | The mass-driven TRANSCOST CERs (effort ~ dry mass<sup>0.48</sup> per element). **Not** cost per flight — see below. |
+| `cost` | **Minimises** development cost | The mass-driven TRANSCOST CERs (stage effort ~ dry mass<sup>0.555</sup>, one engine ~ mass<sup>0.48</sup>). **Not** cost per flight — see below. |
 | `payload` | **Maximises** payload at the design's own lift-off mass | "The same rocket, carrying as much as it can." ~25× slower than `glom`, because each point bisects on payload. |
 
-**Why `cost` is development cost and not cost per flight.** The chapter's cost per flight is a rule of thumb
-on *payload* mass — 5,000 USD/lb — so in this tool it comes out at the same dollar for every vehicle that
-carries the same payload. Measured across a 28 % spread of lift-off mass on the shipped default it did not
-move by one dollar. An objective that cannot see the design it is optimising is worse than no objective, so
-`cost` uses the development CERs, which are mass-driven and do respond. A test pins this, and will fail if
-cost per flight ever becomes design-sensitive and the choice is worth revisiting.
+**Why `cost` is development cost and not cost per flight.** The cost per flight responds to the split since the
+production relations were added, but it also depends on the launch rate, the number of flights and the learning they
+bring, which are assumptions and not properties of the vehicle. It is also flat: on the shipped default it moves by 1 %
+between a 37/63 and a 48/52 split. Development depends on the vehicle alone, so `cost` means that. A test pins it.
 
 **The cost optimum is not the mass optimum.** On the shipped default, minimum GLOM is near a 35/65 split and
-minimum development cost near 46/54. That is a real trade and not an error: development effort is a sum of
-per-element M<sup>0.48</sup> terms, and the sum is not minimised by minimising the total. It is the main
+minimum development cost near 53/47. That is a real trade and not an error: development effort is a sum of
+per-element powers of mass, and the sum is not minimised by minimising the total. The minimum is shallow: 46/54 is
+within 1 % of it and 38 t lighter at lift-off, so read it as a direction rather than a point. It is the main
 reason the objective is worth choosing rather than assuming.
 
 **`payload` and `glom` should nearly agree**, and do — 35.4/64.6 against 35.1/64.9 on the default. They are

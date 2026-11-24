@@ -1279,44 +1279,71 @@ def _payload_env(res, extras, figures):
 
 
 def _cost(res, extras, figures):
-    """R11: development effort and cost per flight (book Chapter 17)."""
+    """R11: development, production and per-flight cost, in work-years first (book Chapter 17, Koelle TRANSCOST 7.2)."""
     c = (extras or {}).get("cost")
     if not c:
         return ""
+    m = 1e6
+
+    def money(w):
+        return f"${c.usd(w)/m:,.0f} M"
     out = ["<h2 id=cost># Cost</h2>",
-           '<div class="banner note">Chapter 17 introduces TRANSCOST, whose cost-estimating relationships all '
-           'have the form C = a M<sup>x</sup> (Eq. 17.3), and prints five of them on Figs. 17.12&ndash;17.16 as '
-           'development effort in work-years against a reference mass. Those five are the whole of the cost '
-           'model this book contains in equation form: the production submodel\u2019s coefficients, the '
-           'learning curve and the operations model are all deferred to its reference. So development cost '
-           'below is a CER result, and <b>cost per flight is not</b> \u2014 it is the chapter\u2019s own rule '
-           'of thumb, reported as the range that rule actually supports.</div>']
-    erows = []
+           '<div class="banner note">TRANSCOST estimates effort in <b>work-years</b>, which do not change with '
+           'inflation or currency, and dollars are work-years times the price of one. The development CERs are the '
+           'book\u2019s (Figs. 17.12&ndash;17.16); the factor values, production, learning and operations come from '
+           'Koelle, <i>Handbook of Cost Engineering</i>, TRANSCOST 7.2 (2007).</div>']
+    out.append("<h3>Development</h3>")
+    lo, hi = (c.development_wyr * (1 + k * 0.2) for k in (-1, 1))
+    out.append(_tbl(["Quantity", "Work-years", f"Dollars ({c.year})"], [
+        ["<b>Development</b>", f"<b>{_f(c.development_wyr)}</b>", f"<b>{money(c.development_wyr)}</b>"],
+        ["Range, &plusmn;20 % (book p.998)", f"{_f(lo)} &ndash; {_f(hi)}", f"{money(lo)} &ndash; {money(hi)}"],
+        [f"Average team over {c.development_years:.1f} years ({_e(c.development_years_from)})",
+         f"{_f(c.average_team)} people", ""]]))
+    rows = []
     for x in c.elements:
-        erows.append([_e(x["element"]), x["code"], _e(x["basis"]), _f(x["mass_kg"]), _f(x["wyr_cer"]),
-                      f"{x['f1']:.2f}", f"{x['f2']:.2f}" if x["f2"] is not None else "&ndash;",
-                      f"{x['f3']:.2f}", f"{x['f8']:.2f}", f"<b>{_f(x['wyr'])}</b>", _e(x["figure"])])
-    out.append("<h3>Development effort</h3>")
+        rows.append([_e(x["element"]) + (f' <span class="small">({_e(x["note"])})</span>' if x["note"] else ""),
+                     x["code"], _e(x["basis"]), _f(x["mass_kg"]), _f(x["wyr_cer"]), f"{x['f1']:.2f}",
+                     f"{x['f2']:.2f}" if x["f2"] is not None else "&ndash;", f"{x['f3']:.2f}", f"{x['f8']:.2f}",
+                     "<b>already developed</b>" if x["existing"] else f"<b>{_f(x['wyr'])}</b>", _e(x["figure"])])
     out.append(_tbl(["Element", "Code", "Mass basis", "Mass [kg]", "CER [work-years]", "f1", "f2", "f3", "f8",
-                     "Effort [work-years]", "Source"], erows, numeric=(3, 4, 9)))
-    out.append(_tbl(["Total", "Value"], [
-        ["Sum of elements &times; f0 = " + f"{c.f0:.3f}", f"<b>{_f(c.development_wyr)} work-years</b>"],
-        [f"At ${c.work_year_usd:,.0f} per work-year", f"<b>${c.development_usd/1e9:,.2f} billion</b> "
-                                                      f"({c.year} dollars)"],
-        ["Work-year value from", _e(c.work_year_source)]]))
+                     "Effort [work-years]", "Source"], rows, numeric=(3, 4, 9)))
+    out.append(f'<p class="small">Total = sum of the efforts &times; f0 = 1.04<sup>{c.n_stages}</sup> = {c.f0:.3f}. '
+               f'One work-year is ${c.work_year_usd:,.0f} in {c.year}: {_e(c.work_year_source)}.</p>')
     out.append("<h3>Cost per flight</h3>")
-    out.append(_tbl(["Basis", "Value"], [
-        [f"Rule of thumb, ${5000:,.0f} per pound to orbit (Sec. 17.5.3)",
-         f"<b>${c.per_flight_central_usd/1e6:,.0f} M</b> &rarr; ${c.usd_per_kg:,.0f}/kg"],
-        ["The range the same section gives ($2,000&ndash;$120,000 per pound)",
-         f"${c.per_flight_usd[0]/1e6:,.0f} M &ndash; ${c.per_flight_usd[1]/1e6:,.0f} M"]]))
+    flights = int(c.inputs["total_flights"])
+    out.append(_tbl(["Part", "Work-years", f"Dollars ({c.year})"], [
+        [f"Vehicle production, averaged over {flights} vehicles", _f(c.production_wyr), money(c.production_wyr)],
+        ["Ground operations", _f(c.ground_wyr), money(c.ground_wyr)],
+        ["Launch and mission operations", f"{c.mission_wyr:.1f}", money(c.mission_wyr)],
+        ["Indirect (11.5 %; Koelle gives 8 to 15 %)", _f(c.indirect_wyr), money(c.indirect_wyr)],
+        ["<b>Cost per flight</b>", f"<b>{_f(c.flight_wyr)}</b>", f"<b>{money(c.flight_wyr)}</b>"],
+        [f"With development spread over {flights} flights", _f(c.flight_wyr_with_development),
+         money(c.flight_wyr_with_development)]]))
+    out.append(_tbl(["Production element", "Units per vehicle", "Mass [kg]", "First unit [work-years]", "Learning p",
+                     "f4", "Per vehicle [work-years]", "Source"],
+                    [[_e(p["element"]), p["n"], _f(p["mass_kg"]), f"{p['first_unit_wyr']:,.1f}", f"{p['p']:.3f}",
+                      f"{p['f4']:.2f}", f"{p['wyr']:,.1f}", _e(p["source"])] for p in c.production],
+                    numeric=(1, 2, 3, 4, 5, 6)))
+    rows = [["This estimate", _f(c.flight_wyr), money(c.flight_wyr)]]
+    if c.trend_wyr is not None:
+        rows.append(["Trend of real vehicles (fit of book Table 17.5; scatter +100 %/&minus;50 %, p.1009)",
+                     f"{_f(c.trend_wyr)} ({_f(c.trend_band_wyr[0])} &ndash; {_f(c.trend_band_wyr[1])})",
+                     money(c.trend_wyr)])
+    rows.append(["Rule of thumb, $5,000 per pound (book p.995); the same page gives $2,000 to $120,000", "",
+                 f"${c.rule_usd/m:,.0f} M (${c.rule_band_usd[0]/m:,.0f} &ndash; {c.rule_band_usd[1]/m:,.0f} M)"])
+    out.append("<h3>Cross-checks</h3>")
+    out.append(_tbl(["Basis", "Work-years per flight", "Dollars"], rows))
     if c.comparables:
-        crows = [[_e(x["name"]), _f(x["leo_kg"]),
-                  (f"${x['cost_low_usd']/1e6:,.0f} M" if x["cost_low_usd"] == x["cost_high_usd"]
-                   else f"${x['cost_low_usd']/1e6:,.0f}&ndash;${x['cost_high_usd']/1e6:,.0f} M"),
-                  f"${x['usd_per_kg']:,.0f}"] for x in c.comparables]
+        crows = []
+        for x in c.comparables:
+            w = x["wyr_per_flight"]
+            lo_, hi_ = x["price_low"] / m, x["price_high"] / m
+            crows.append([_e(x["name"]), _f(x["leo_kg"]),
+                          "&ndash;" if not w else _f(w[0]) if w[0] == w[1] else f"{_f(w[0])}&ndash;{_f(w[1])}",
+                          (f"{lo_:,.0f}" if lo_ == hi_ else f"{lo_:,.0f}&ndash;{hi_:,.0f}") + f" M {x['currency']}"])
         out.append("<h3>Real vehicles of comparable payload (book Table 17.5, ca. 2013)</h3>")
-        out.append(_tbl(["Vehicle", "LEO payload [kg]", "Price per flight", "$/kg"], crows, numeric=(1, 3)))
+        out.append(_tbl(["Vehicle", "LEO payload [kg]", "Work-years per flight", "Price per flight"], crows,
+                        numeric=(1,)))
     out.append('<p class="small">' + "<br>".join(_e(n) for n in c.notes) + "</p>")
     return "".join(out)
 

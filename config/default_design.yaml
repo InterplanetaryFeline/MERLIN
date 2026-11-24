@@ -229,8 +229,8 @@ mission:
   cost_year:
     v: 2010
     u: year
-    d: Year whose constant dollars the cost estimate is reported in. 2010 is the book's own reference year for all its TRANSCOST examples and the year of the bold NASA work-year value in Table 17.3; other years are escalated
-      from it by Eq. 17.1 at 3.1 %/yr
+    d: Year whose constant dollars the cost estimate is reported in. 2010 is the book's own reference year for all its TRANSCOST examples (p.996). Years from 1960 to 2007 use
+      Koelle Table 1-II, 2010 the book's Table 17.3, and later years are escalated from 2010 by Eq. 17.1 at 3.1 %/yr
     s: Book Sec. 17.6 and Table 17.3, p.1002
     t: reference
   pad_height_m:

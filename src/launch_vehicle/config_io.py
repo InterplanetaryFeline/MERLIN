@@ -88,8 +88,27 @@ CREATABLE_LEAVES = {("engine", "cstar_mps"): dict(u="m/s", d="Delivered characte
                                                              "the engine dimensions come from the book relations")}
 
 
+def creatable_meta(keys) -> dict | None:
+    """Units and description of an optional input that may be created, or None."""
+    if len(keys) == 3 and list(keys[:2]) == ["mission", "cost"]:
+        from . import cost as _cost                      # the Cost tab's settings (cost.INPUTS and per element)
+        if _cost.known_input(keys[2]):
+            d = _cost.INPUTS.get(keys[2])
+            return dict(u=d[1], d=f"{d[2]}. {d[3]}") if d else dict(u="-", d="Cost model factor of one element")
+    return CREATABLE_LEAVES.get(tuple(keys[-2:]))
+
+
 def creatable_leaf(keys) -> bool:
-    return tuple(keys[-2:]) in CREATABLE_LEAVES
+    return creatable_meta(keys) is not None
+
+
+def creatable_parent(node, keys) -> None:
+    """A design without a `mission.cost` block gets an empty one when its first setting is made."""
+    if list(keys[:2]) == ["mission", "cost"]:
+        if not creatable_leaf(keys):
+            raise ConfigError(f"unknown parameter path '{'.'.join(keys)}'")
+        if not isinstance(node["mission"].get("cost"), dict):
+            node["mission"]["cost"] = {}
 
 
 def assumptions_doc(assumptions_path, design_path=None) -> dict:
@@ -114,6 +133,7 @@ def deep_set(d: dict, dotted: str, value):
     """
     cur = d
     keys = re.sub(r"\[(\d+)\]", r".\1", str(dotted)).split(".")
+    creatable_parent(d, keys)
     for k in keys[:-1]:
         cur = cur[int(k)] if isinstance(cur, list) else cur[k]
     last = keys[-1]
@@ -257,7 +277,7 @@ def build_spec(design: dict, assump: dict, reg: list | None = None, name: str = 
         # the Chapter 9 load cases read this; optional, defaults to a vehicle standing on the ground
         pad_height_m=m.get("pad_height_m"), wind=m.get("wind"),
         # Chapter 17 cost model
-        cost_year=m.get("cost_year"),
+        cost_year=m.get("cost_year"), cost=m.get("cost"),
     )
     f = _need(design, "fairing", "")
     fairing = FairingSpec(

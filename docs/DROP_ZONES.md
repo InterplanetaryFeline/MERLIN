@@ -1,5 +1,9 @@
 # Jettison drop zones
 
+> **The GUI tab is hidden at present.** Its map has no coastline, so it cannot show whether an area is over land. The
+> calculation and its exports remain in the program (`hazard.areas()`); putting the tab back is one word in
+> `HIDDEN_TABS` in `gui_static/index.html`. Mentions of the tab below describe it as it is when shown.
+
 Where each piece of jettisoned hardware comes down, and how wide the uncertainty is. This document states what
 the model does, what it refuses to do, and - most importantly - what actually sets the size of the areas it
 draws, which is not what one would guess.

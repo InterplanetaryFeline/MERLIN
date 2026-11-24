@@ -77,15 +77,13 @@ def _sized(spec, fractions):
 def _cost_usd(res) -> float | None:
     """DEVELOPMENT cost, and deliberately not cost per flight.
 
-    The chapter's cost per flight is a rule of thumb on PAYLOAD mass - 5,000 USD/lb - so in this tool it
-    comes out at exactly the same dollar for every vehicle that carries the same payload. Measured across a
-    28 % spread of lift-off mass on the shipped default it did not move by one dollar, which makes it an
-    objective that cannot see the design it is supposedly optimising. The development CERs are mass-driven
-    (Fig. 17.16, effort ~ dry mass^0.48 per element) and do respond, so those are what `cost` means here.
+    The development CERs are mass-driven (Fig. 17.16, effort ~ dry mass^0.555 per stage) and respond to the split.
+    The cost per flight now responds too, but it also depends on launch rate and production run, which are
+    assumptions rather than properties of the vehicle, so development is what `cost` means here.
 
     Worth knowing before choosing it: the development-cost optimum is NOT the GLOM optimum. On the shipped
-    default, minimum GLOM is near a 35/65 split and minimum development cost near 44/56, because the sum of
-    per-element M^0.48 terms is not minimised by minimising the total. That is a real trade, not an error.
+    default, minimum GLOM is near a 35/65 split and minimum development cost near 53/47, because the sum of
+    per-element powers of mass is not minimised by minimising the total. That is a real trade, not an error.
     """
     from . import cost as _cost
     try:

@@ -538,8 +538,8 @@ def _study_summary(extras):
                               "event": pe.governing_axial_event}
     co = extras.get("cost")
     if co is not None:
-        out["cost"] = {"development_usd": co.development_usd, "per_flight_usd": co.per_flight_central_usd,
-                       "usd_per_kg": co.usd_per_kg, "year": co.year}
+        from . import cost as _cost
+        out["cost"] = _cost.as_json(co)
     ctl = extras.get("control")
     if ctl is not None and getattr(ctl, "points", None):
         w = ctl.worst("controllability")
@@ -607,11 +607,12 @@ def apply_overrides(raw: dict, overrides: dict | None, what: str = "save", sourc
             _library_override(raw, keys, value, (sources or {}).get(dotted), what, dotted)
             continue
         try:
+            _creatable_parent(raw, keys)
             for k in keys[:-1]:
                 node = node[int(k)] if isinstance(node, list) else node[k]
             if isinstance(node, dict) and keys[-1] not in node and _creatable_leaf(keys):
                 # an optional input the file leaves out and the page still offers: written as a full leaf
-                meta = _CREATABLE_LEAVES[tuple(keys[-2:])]
+                meta = _creatable_meta(keys)
                 node[keys[-1]] = {"v": None, "u": meta["u"], "d": meta["d"], "s": "", "t": "user"}
             leaf = node[int(keys[-1])] if isinstance(node, list) else node[keys[-1]]
         except (KeyError, IndexError, ValueError, TypeError) as e:
@@ -634,7 +635,8 @@ def apply_overrides(raw: dict, overrides: dict | None, what: str = "save", sourc
     return raw
 
 
-from .config_io import CREATABLE_LEAVES as _CREATABLE_LEAVES, creatable_leaf as _creatable_leaf  # noqa: E402
+from .config_io import (creatable_leaf as _creatable_leaf, creatable_meta as _creatable_meta,   # noqa: E402
+                        creatable_parent as _creatable_parent)
 
 
 def _library_override(raw, keys, value, src, what, dotted):
@@ -1040,6 +1042,19 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, {"error": str(ex), "field": ex.field})
                 return self._send(200, {"added": b.get("name"), "kind": b.get("kind"), "library": _ul.listing(),
                                         "combinations": _combination_map(), "schema": _ul.schema_for_gui()})
+            if u.path == "/api/cost":
+                # the Cost tab's settings change the estimate, not the vehicle, so nothing is sized again
+                st = self._state({"token": [b.get("token") or ""]})
+                from . import cost as _cost
+                try:
+                    year = int(float(b.get("year") or 2010))
+                    if not 1960 <= year <= 2100:
+                        raise _cost.CostInputError("the cost year must be between 1960 and 2100", "year")
+                    est = _cost.estimate(st["res"], year=year, inputs=b.get("inputs") or {})
+                except (ValueError, OverflowError) as ex:
+                    return self._send(400, {"error": str(ex), "cost_field": getattr(ex, "field", None)})
+                st["extras"]["cost"] = est
+                return self._send(200, _cost.as_json(est))
             if u.path == "/api/save":
                 base = _safe_design_path(b.get("path") or "config/default_design.yaml")
                 try:

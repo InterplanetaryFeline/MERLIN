@@ -334,6 +334,7 @@ NOT_LEAF_KEYS = {
     "mission", "orbit", "launch_site", "losses", "vehicle", "stages", "tank", "engine", "motor", "layout",
     "fairing", "boosters", "constraints", "aerodynamics", "wind", "air_launch", "geometry",
     "propellants", "solid_propellants", "tank_materials", "mer", "mer_scatter", "convergence",
+    "cost",                   # the Cost tab's own block; its settings are made there (tests/test_cost.py)
 }
 
 

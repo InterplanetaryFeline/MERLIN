@@ -18,7 +18,7 @@ reference is Edberg & Costa, *Design of Rockets and Space Launch Vehicles*, 2nd 
 
 > **This is a preliminary design tool, not a design authority.** A closed mass budget shows that the stated
 > assumptions are self-consistent, not that a vehicle can fly the mission. Its errors are measured and published
-> below, and its drop zones are not a range-safety product.
+> below.
 
 ## Install and run from source
 
@@ -54,16 +54,18 @@ python -m launch_vehicle.main family --help
 * **Sizing:** serial liquid and solid stages and strap-on boosters, with the number of stages and boosters as
   inputs; tank and motor-case geometry; engine and nozzle dimensions; mass ledger, centre of mass and moments of
   inertia at every flight event.
-* **Mission:** LEO, SSO, GTO and GEO delta-v budgets, launch sites, and ascent losses from the book's methods.
+* **Mission:** LEO, SSO, GTO and GEO delta-v budgets, 30 launch sites, and ascent losses from the book's methods.
+* **Libraries:** real engines and motors, propellants, propellant combinations and tank materials, and your own
+  entries beside them.
 * **Trades:** optimum staging by lift-off mass, cost or payload; payload curves for other orbits; trade studies
-  and side-by-side comparison; launcher families; pinning a vehicle's stages to change its strap-on count, or
-  re-sizing the core for a fixed booster set.
+  and side-by-side comparison; from the command line, launcher families, pinning a vehicle's stages to change its
+  strap-on count, or re-sizing the core for a fixed booster set.
 * **Analysis:** 3-DoF ascent trajectory and its optimisation, with the drag coefficient built up from the vehicle's
   own geometry; ground and flight loads with your own winds-aloft
   profile; shell stress and buckling; aerodynamics and stability; solid internal ballistics; payload environments;
-  development cost; reliability; Monte-Carlo uncertainty; jettison drop zones.
+  development, production and per-flight cost in work-years and dollars; reliability; Monte-Carlo uncertainty.
 * **Outputs:** a self-contained design report, an Excel workbook with live cross-check formulas, dimensioned
-  drawings, DXF, STL, OBJ and 3MF exports, KML and GeoJSON drop zones, and STEP through an optional geometry kernel.
+  drawings, DXF, STL, OBJ and 3MF exports, and STEP through an optional geometry kernel.
 
 ## What it does not do
 
@@ -71,6 +73,10 @@ python -m launch_vehicle.main family --help
   not re-sized around the better ascent the optimiser finds, and no motor casing is re-sized for the chamber
   pressure its own grain reaches.
 * **Reusable vehicles** cannot be represented, and there is no reuse economics.
+* **The lightest vehicle may not reach orbit in its own Trajectory tab.** The ascent is simulated as one continuous burn
+  straight to the target altitude, with no parking orbit, which costs a high orbit and a small first stage far more than
+  the regression the vehicle is sized with. The shipped default, with its optimised split, is an example: the direct climb
+  to 400 km falls short, and flown to 185 km and raised it would not.
 * **Shared-core families are biased.** The sizer never carries a core oversized for the mission being flown, so
   a family's smaller variants come out too light when sized alone, and over-predict payload when the core is
   pinned. This is measured in `docs/ACCURACY.md` section 6b, and is not corrected.
@@ -103,13 +109,14 @@ each error to its cause.
 | [`docs/ACCURACY.md`](docs/ACCURACY.md) | what the tool gets wrong, measured, with the mechanism for each error |
 | [`docs/DRAG.md`](docs/DRAG.md) | how drag is estimated from the geometry, and how far that is from published data |
 | [`docs/OPTIMISATION.md`](docs/OPTIMISATION.md) | the staging objectives, and what the search does not promise |
-| [`docs/DROP_ZONES.md`](docs/DROP_ZONES.md) | impact points and hazard areas for jettisoned items |
+| [`docs/COST_VALIDATION.md`](docs/COST_VALIDATION.md) | the cost model against real programmes' work-years |
 | [`docs/EXTERNAL_MERS.md`](docs/EXTERNAL_MERS.md) | mass relations from outside the book, and why none was adopted |
 | [`docs/ERRATA_COMPLIANCE.md`](docs/ERRATA_COMPLIANCE.md) | how the book's published errata were applied |
 | [`docs/ROADMAP.md`](docs/ROADMAP.md) | coverage of the book by chapter, and open work |
 | [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | what changed in each version |
 | [`outputs/engineering_method_register.xlsx`](outputs/engineering_method_register.xlsx) | every method with its source, assumptions, limits and verification |
 | [`docs/VALIDATION_REPORT.md`](docs/VALIDATION_REPORT.md), [`docs/TECHNICAL_REPORT.md`](docs/TECHNICAL_REPORT.md) | earlier reports, kept for the record |
+| [`docs/DROP_ZONES.md`](docs/DROP_ZONES.md) | jettison drop zones, whose tab is hidden at present |
 
 ## Conventions
 
@@ -121,7 +128,7 @@ units, description, source and provenance (`user`, `reference` or `assumed`). Ba
 ## Testing
 
 ```bash
-python -m pytest
+python -m pytest                           # 20 to 45 minutes
 python tools/verify_workbook.py outputs/launch_vehicle_sizing_workbook.xlsx
 ```
 

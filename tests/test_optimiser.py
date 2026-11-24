@@ -132,19 +132,15 @@ def test_an_objective_the_tool_cannot_compute_is_refused():
         raise AssertionError("'cheapness' was accepted as an objective")
 
 
-def test_cost_means_development_cost_because_cost_per_flight_cannot_see_the_design():
-    """The chapter's cost per flight is a rule of thumb on PAYLOAD mass, so it is the same dollar for every
-    vehicle carrying the same payload - an objective blind to what it is optimising. This pins the reason
-    the `cost` objective uses the development CERs instead, and will fail if per-flight ever becomes
-    design-sensitive and the choice is worth revisiting."""
+def test_cost_means_development_cost_because_cost_per_flight_rests_on_assumptions():
+    """Cost per flight responds to the split since the production relations were added, but it also moves with the
+    launch rate and the production run, which no vehicle has. Development moves with neither."""
     from launch_vehicle import cost as costing
-    spec = spec_of(DEFAULT)
-    seen = set()
-    for f1 in (0.30, 0.44, 0.60):
-        res = opt._sized(spec, [f1, 1 - f1])
-        assert res is not None
-        seen.add(round(costing.estimate(res).per_flight_central_usd, 2))
-    assert len(seen) == 1, f"cost per flight now varies with the design ({seen}) - reconsider the objective"
+    res = opt._sized(spec_of(DEFAULT), [0.44, 0.56])
+    few, many = (costing.estimate(res, inputs=dict(launch_rate=r, total_flights=n)) for r, n in ((2, 20), (12, 200)))
+    assert few.flight_wyr > 1.5 * many.flight_wyr
+    assert few.development_wyr == many.development_wyr
+    assert opt._cost_usd(res) == costing.estimate(res).development_usd
 
 
 def test_maximising_payload_lands_near_the_lightest_vehicle():

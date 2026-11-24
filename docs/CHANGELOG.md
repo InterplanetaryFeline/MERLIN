@@ -3,6 +3,36 @@
 Newest first. Entries are kept as written at each release, so what they say about the tool's limits and numbers
 was true of that version. [`ACCURACY.md`](ACCURACY.md) has the current measurements.
 
+**What changed in v1.3.0 - the cost model in work-years**
+
+*Not released yet.*
+
+*Corrections.* Development cost was wrong in six ways. The engine relation was given the mass of a whole cluster
+instead of one engine (2.4 times too much for six). The systems-engineering factor was 1.043 instead of 1.04 to the
+number of stages. The fairing and payload adapter were left out. Pressure-fed engines were never recognised. Euro and
+yen prices were treated as dollars. Zenit 3SL's GTO payload was listed as LEO. The default rocket goes from 47,500 to
+37,700 work-years (as-written split), and "lowest development cost" as an optimiser target gives different answers.
+
+*A Cost tab*, offered when Cost is picked in Analyses. Work-years first, dollars beside them: development element by
+element with its share, the average team, production of one vehicle with learning, ground, mission and indirect cost,
+cost per flight and per tonne. Every factor (f1, f2, f3, already developed, region, launch rate, number of flights,
+assembly mode, utilisation, year) is set on the tab, re-costs at once without re-sizing, and is saved with the design.
+
+*A second source.* Koelle's Handbook of Cost Engineering (TRANSCOST 7.2, 2007), which the book defers to, supplies the
+factor values, the production relations, the learning charts and the operations relations (M106, M107). It also
+settles Table 17.4: the book's copy of Koelle's Ariane 5 table is misprinted, and all five rows now reproduce.
+
+*Drop zones hidden.* The tab, and the longitude field only it reads, are no longer offered. The map has no coastline, so
+it could not say whether an area is over land. The calculation, its exports and its tests remain.
+
+*Documentation.* The manual, README and roadmap were checked against the program. Every default-design figure in the manual
+was measured again: many predated the optimised split being on. The manual now says that the shipped default, at that split,
+does not reach orbit in its own simulated ascent, because that ascent is one burn straight to 400 km.
+
+*Checked against work-years* ([`COST_VALIDATION.md`](COST_VALIDATION.md)). Koelle's worked examples reproduce. Saturn V
+development comes out 5 % high and Ariane 5 5 % low, partly by luck, since single parts are up to 41 % off. Cost per
+flight runs high: a median of 1.7 times Koelle's tables for 13 vehicles.
+
 **What changed in v1.2.1 - drawing and table fixes**
 
 * **Common bulkheads.** The shared dome that bulges into the upper tank is now filled with the lower tank's colour,

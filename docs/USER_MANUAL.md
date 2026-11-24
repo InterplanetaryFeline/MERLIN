@@ -1,4 +1,4 @@
-# User manual — MERLIN (v1.0)
+# User manual — MERLIN
 
 A conceptual-design sizing tool for expendable multistage launch vehicles with **liquid stages, solid motor
 stages and strap-on boosters**. The methods come from Edberg & Costa, *Design of Rockets and Space Launch
@@ -29,9 +29,9 @@ register (`outputs/engineering_method_register.xlsx`, also a sheet in every work
    * [7.5 The ascent trajectory](#75-the-ascent-trajectory)
    * [7.6 Trade studies and design comparison in the GUI](#76-trade-studies-and-design-comparison-in-the-gui)
    * [7.7 Sensitivity](#77-sensitivity)
-   * [7.8 Drop zones: where the jettisoned hardware lands](#78-drop-zones-where-the-jettisoned-hardware-lands)
+   * [7.8 Drop zones (hidden)](#78-drop-zones-hidden)
    * [7.9 Ground and flight loads](#79-ground-and-flight-loads)
-   * [7.10 Aerodynamic build-up and centre of pressure](#710-aerodynamic-buildup-and-centre-of-pressure)
+   * [7.10 Aerodynamic build-up and centre of pressure](#710-aerodynamic-build-up-and-centre-of-pressure)
    * [7.11 Optimising the pitch programme](#711-optimising-the-pitch-programme)
    * [7.12 Static stability and control authority](#712-static-stability-and-control-authority)
    * [7.13 Shell stress, buckling and required thickness](#713-shell-stress-buckling-and-required-thickness)
@@ -53,6 +53,10 @@ register (`outputs/engineering_method_register.xlsx`, also a sheet in every work
 ---
 
 ## 1. Install and first run
+
+**On Windows, the app needs nothing installed.** Download `MERLIN-<version>-windows.zip` from the release page, unzip
+it somewhere you can write to, and run `MERLIN/MERLIN.exe`. It is the GUI of §7.2 in its own window. The rest of this
+section is for running from source.
 
 ```bash
 python -m venv .venv
@@ -77,7 +81,7 @@ python -m launch_vehicle.main run --design config/default_design.yaml --out outp
 # only the optimisation, printed to the console
 python -m launch_vehicle.main optimize --design config/default_design.yaml
 
-# the three optional studies (each adds its own report section)
+# the optional studies (each adds its own report section; see 7.3)
 python -m launch_vehicle.main run --design config/default_design.yaml --out outputs --all-studies
 python -m launch_vehicle.main run --design config/default_design.yaml --out outputs --performance --staging
 python -m launch_vehicle.main run --design config/default_design.yaml --out outputs --uncertainty --mc-samples 500
@@ -97,7 +101,8 @@ Verification and validation:
 python -m pytest -v                       # the test suite (see section 11)
 python tools/run_tests.py                 # offline fallback runner if pytest is unavailable
 python tools/verify_workbook.py outputs/launch_vehicle_sizing_workbook.xlsx   # recalculates the workbook in LibreOffice
-python tools/run_validation.py            # re-runs every real-vehicle case (slow, ~10 min)
+python tools/run_validation.py            # re-runs every real-vehicle case
+python tools/validate_cost.py             # the cost model against real work-years, docs/COST_VALIDATION.md
 python tools/build_validation_report.py   # rebuilds the validation workbook, figure and tables
 ```
 
@@ -205,7 +210,7 @@ Overrides on the command line and in code use dotted paths into the *unwrapped* 
 | `orbit.type` | `LEO`, `SSO`, `GTO`, `GEO_VIA_GTO`, `GEO_DIRECT`, `CUSTOM`. |
 | `orbit.perigee_altitude_km`, `apogee_altitude_km`, `eccentricity` | Injection orbit. LEO/SSO are circular. |
 | `orbit.inclination_deg` | Target inclination; computed from J2 for `SSO`. Must be ≥ the launch-site latitude (no dog-legs). |
-| `launch_site.site` | A site from `config/launch_sites.yaml` (30 sites, by name, listed in the GUI under their continent; one is a suborbital-only range and one a proposed site whose coordinate is a stand-in, and both say so when picked). Fills `latitude_deg` when you leave it `null`; if you state a latitude as well, **yours wins** and the disagreement is reported. `null` = Custom, use your own latitude. Nothing else is filled: longitude is carried in the library for reference only, and the library holds no pad altitudes rather than guessing them. |
+| `launch_site.site` | A site from `config/launch_sites.yaml` (30 sites, by name, listed in the GUI under their continent; one is a suborbital-only range and one a proposed site whose coordinate is a stand-in, and both say so when picked). Fills `latitude_deg` (and the longitude, which only the hidden drop-zone study reads) when you leave it `null`; if you state a latitude as well, **yours wins** and the disagreement is reported. `null` = Custom, use your own latitude. The library holds no pad altitudes rather than guessing them. |
 | `launch_site.latitude_deg`, `altitude_m`, `azimuth_deg` | Site; azimuth `null` ⇒ `sin β = cos i / cos lat`. Latitude is what the model uses: it sets the Earth-rotation credit and the floor on reachable inclination. |
 | `launch_site.include_earth_rotation` | "Include Earth's rotation" in the GUI: subtract the site's rotation speed, as a vector, from the delta-v the vehicle must supply (book Example 3.9). |
 | `losses.model` | `book_penalty` (Eqs. 3:36–3:38 regression, recommended for ground launch) or `user`. |
@@ -214,6 +219,7 @@ Overrides on the command line and in code use dotted paths into the *unwrapped* 
 | `losses.staging_delay_s` | Added to the ascent time per separation. |
 | `losses.ascent_time_override_s` | **Use when a stage burns after a long coast** (see section 9). Replaces the summed burn times in the loss regression. |
 | `losses.design_margin_fraction` | Delta-v margin, applied once to the subtotal. |
+| `cost.*`, `cost_year` | Optional. The Cost tab's settings (§7.15). |
 | `air_launch.release_speed_mps`, `release_altitude_m`, `flight_path_angle_deg` | Optional. Credits the horizontal component of the carrier's release speed. Requires `losses.model: user`. |
 
 ### 5.2 `fairing`, `vehicle`, `constraints`
@@ -342,8 +348,8 @@ sizing fail.)
 
 ### 5.6b Your own propellants and tank materials
 
-The **Library...** button in the GUI's top bar, and the **+ own** button beside every fuel, oxidiser and tank
-material dropdown, open a form for adding an entry of your own. It is stored in `designs/my_library.yaml`, not in
+The **Library...** button in the GUI's top bar, and the **+ own** button beside every fuel, oxidiser, solid
+propellant, propellant combination and tank material dropdown, open a form for adding an entry of your own. It is stored in `designs/my_library.yaml`, not in
 the shipped file, and is offered in the dropdowns of every design, marked "(my library)".
 
 * **A fuel or oxidiser** needs its role and its density as loaded, which sets the tank volume and matters most.
@@ -400,8 +406,8 @@ percent. Only `pressure_vessel` sizes a wall from the allowable stress and densi
 **`MATUNUSED`** warning when a design names a material its own mass method ignores, so this cannot be
 mistaken for the tool being broken. The shell stress and buckling study always reads the material directly.
 
-With `pressure_vessel` sizing on the shipped default design, the four come out: Ti-6Al-4V −4.0 %, Al-2219
-baseline, SS-301-FH +4.0 %, SS-304L **+86 %**. The last is not a bug — annealed 304L has about a seventh of
+With `pressure_vessel` sizing on both stages of the shipped default design, the four come out: Ti-6Al-4V −4.4 %,
+Al-2219 baseline, SS-301-FH +4.3 %, SS-304L **+92 %**. The last is not a bug — annealed 304L has about a seventh of
 2219's allowable. A real 304L vehicle tank is cold-worked and pressure-stabilised, which this entry does not
 model; use `SS-301-FH` for the full-hard, thin-gauge case.
 
@@ -417,9 +423,11 @@ Solid motor casings do **not** use this library: their mass comes from the casin
 1. Copy `config/default_design.yaml`.
 2. Set the mission (payload, orbit, launch site) and the fairing.
 3. Set stage diameters, propellants, Isp values and the thrust mode of each stage.
-4. Choose a starting `dv_fractions` (e.g. `[0.45, 0.55]`), run, then run `optimize` and feed the returned
-   split back in. On three- and four-stage vehicles this matters a lot: a poor split can double the GLOM.
-5. Read the Results dashboard: convergence status, errors and warnings first, then the masses.
+4. Choose a starting `dv_fractions` (e.g. `[0.45, 0.55]`) and run. With `optimise_dv_split` on, as shipped, the split
+   is replaced by the optimum before sizing (§6.6); with it off, run `optimize` and feed the returned split back in.
+   On three- and four-stage vehicles this matters a lot: a poor split can double the GLOM.
+5. Check in the Trajectory tab that the vehicle reaches its orbit. The lightest vehicle need not (§7.5).
+6. Read the Results dashboard: convergence status, errors and warnings first, then the masses.
 
 ### 6.2 Size a solid vehicle
 
@@ -454,17 +462,16 @@ Two inputs in the `vehicle:` block, both ordinary fields in the GUI:
 | `optimise_dv_split` | On in every shipped design since v1.1 (it was off before); it adds a few seconds to each sizing. **On, the delta-v split is replaced by the optimum before the vehicle is sized**, so the mass, geometry, loads, drawing and cost all describe the same rocket as the split that is reported. The GUI writes the applied split back into the panel as a changed value, with its revert arrow; your file on disk is untouched until you save. |
 | `optimise_objective` | `glom` (lightest vehicle, the default), `cost` (lowest development cost) or `payload` (most payload at the design's own lift-off mass). |
 
-It is off by default on purpose: the staging split is a decision you make, and a tool that silently re-made
-it would be reporting someone else's design.
+It was off by default until v1.1. It is on now because the published accuracy figures are for the optimised split. Turn
+it off when the split is your decision; the result then uses yours exactly as written.
 
 Before this existed the optimum was a **footnote**: the report printed an optimal split next to a vehicle
 sized from your split, and acting on it meant reading the number off the report and typing it back in.
 
 Two things worth knowing before you pick an objective. **`cost` means development cost**, because the
-chapter's cost per flight is a rule of thumb on payload mass — measured across a 28 % spread of lift-off
-mass it does not change by one dollar, so it cannot see the vehicle it is supposedly optimising. And **the
+cost per flight also depends on the launch rate and production run you assume, not on the vehicle alone. And **the
 cost optimum is not the mass optimum**: on the shipped default, lightest is near a 35/65 split and cheapest
-to develop near 46/54, because development effort is a sum of per-element M^0.48 terms and that sum is not
+to develop near 53/47, because development effort is a sum of per-element powers of mass and that sum is not
 minimised by minimising the total. Full detail, including what the search does not promise, is in
 [`docs/OPTIMISATION.md`](OPTIMISATION.md).
 
@@ -525,6 +532,7 @@ design review, or printed. It carries, in this order:
 3. **Mission requirement and Δv budget** — every budget line with its book source, and which lines are in the
    total.
 4. **Vehicle configuration** — stages, propellants, propulsion, upper assembly, boosters.
+   The sections of the analyses that ran follow the drawings and the mass statement, in a fixed order.
 5. **Drawings** — the general arrangement, the mass distribution and every stage, embedded as images. Each
    vehicle and stage drawing is **one continuous view**, drawn at the largest scale that fits the page height,
    with the dimensions on the left and each stage's data beside the stage it describes. Nothing is cut into
@@ -536,7 +544,7 @@ design review, or printed. It carries, in this order:
 8. **Mass ledger and mass properties** — every mass, where it sits, the shape used for its inertia, and the rule
    it came from; then the centre of mass and inertia at each flight event.
 9. **Geometry** — the segment table and the tank/motor-case geometry.
-10. **Input register** — *all* ~230 inputs with units, description, source and provenance, colour-coded.
+10. **Input register** — *all* ~500 inputs (the design's and the assumptions') with units, description, source and provenance, colour-coded.
 11. **Checks and warnings** — every issue the validator raised.
 12. **Engineering method register** — every registered method with their book page, assumptions, limits and verification.
 
@@ -552,7 +560,7 @@ python tools/gui.py                       # http://127.0.0.1:8000, opens a brows
 python tools/gui.py --port 8080 --no-browser
 ```
 
-Standard library only — no framework, no CDN, nothing leaves the machine, and the server binds to the loopback
+The Windows app is this same page in its own window. Standard library only — no framework, no CDN, nothing leaves the machine, and the server binds to the loopback
 interface. It is the way to drive this tool: nobody should be typing a nine-hundred-line YAML file by hand.
 
 **The configuration you are working on** is the thing in the title bar. Name it, change it, save it:
@@ -563,7 +571,8 @@ interface. It is the way to drive this tool: nobody should be typing a nine-hund
 | **Open…** | Every design, grouped: *My designs* (what you saved), *Starting points*, *Examples*, and *Check cases* — the real vehicles the tool is validated against, Electron and Falcon 9 and the rest. Pick one and it loads, with its own description. |
 | **Save** | Writes a complete, annotated design file into `designs/`. Your changed values are written in with `t: user` and a source saying you set them in the GUI — they do not inherit the book's provenance. The file is reloaded to prove it parses before you are told it saved, and it runs from the command line like any other design. Once a design is bound to a file of its own, Save overwrites that file: same path, no dialog, no second copy. The header says which file that is. |
 | **Save as…** | Saves under a different name and switches to it. If the name is taken you are asked before anything is replaced. |
-| **Analyses…** | Which of the eleven optional studies to run. Anything a study depends on comes with it: tick the shell stress and the trajectory and the load cases run too. |
+| **Library…** | Your own propellants, combinations, solid propellants and tank materials (§5.6b). |
+| **Analyses…** | Which of the eleven optional studies to run. Each adds a tab of its own; **Cost**, for instance, is there only when it is picked. Anything a study depends on comes with it: tick the shell stress and the trajectory and the load cases run too. |
 | **Size vehicle** | Runs the same Python model the CLI runs. |
 
 **Save never overwrites a shipped file.** `config/`, `examples/` and `validation/` are reference material — a
@@ -602,8 +611,8 @@ The consequence was that picking an engine on a stage that already had its own I
 same lift-off mass to the kilogram, with the explanation three warnings deep in the Checks tab. So the pick
 now blanks the figures that engine provides (Isp, thrust, expansion ratio, chamber pressure and the rest) and
 tells you which, and the library fills them as the design loads. Revert any one of them to go back to your own
-number. On the shipped default, choosing Merlin 1D takes it from 410,003 kg to 382,231 kg; RD-180 to
-332,231 kg.
+number. On the shipped default, choosing Merlin 1D takes it from 397,246 kg to 376,450 kg; RD-180 to
+332,211 kg.
 
 **A GTO or GEO mission has no ascent trajectory at all.** The real vehicles fly those as burn-coast-restart
 — Atlas V 551 takes three Centaur burns around a 508 s and a 9,000 s coast, Delta IV Heavy three DCSS burns
@@ -637,7 +646,7 @@ Before, a design without strap-ons had no way to get them and Ariane 5 had no wa
 | **Taking them off** | Removes the block and nothing else. Nothing outside it refers to the boosters and `attach_stage` is pinned to stage 1 in this version, so there is no index to clamp and no delta-v split to rebalance. |
 
 Expect the core to grow when the boosters come off — and do not expect the vehicle to get heavier. Ariane 5
-ECA sizes at 855 t with its EAPs and **738 t without them**, with the core stage nearly tripling. That is the
+ECA, with its own split, sizes at 855 t with its EAPs and **738 t without them**, with the core stage nearly tripling. That is the
 right answer: the EAPs burn at about 275 s of specific impulse against the cryogenic core's ~430 s, so
 replacing boosted thrust with core propulsion buys the same delta-v for less propellant. It is also a good
 illustration of what strap-ons are actually for, which is thrust off the pad and a smaller core, not
@@ -652,7 +661,7 @@ because 10 % is what converges; 2 % oscillates.
 
 **The inputs, organised the way you would ask about them.** The left panel is still the complete input register,
 but arranged as **section → topic → field**: Mission splits into payload and orbit, orbit, launch site, ascent
-losses, trajectory model and winds aloft; each stage into propellants and size, engine, tankage, layout and mass
+losses, trajectory model and winds aloft (the cost settings are on the Cost tab); each stage into propellants and size, engine, tankage, layout and mass
 estimating.
 
 Within each topic, **the specification is shown and the assumptions fold away.** What is shown is what you or a
@@ -680,8 +689,7 @@ fills the thrust, Isp, chamber pressure, area ratio, mass, envelope and mixture 
 as `from_database` does in the file.
 
 **Picking a launch site fills the latitude, and tells you what it costs you.** *Launch site* on the Mission
-panel lists 28 real sites grouped by region — American, Russian and Kazakh, Chinese, European including Andøya,
-Esrange and SaxaVord, and the rest — each labelled with its latitude. Choosing one sets
+panel lists 30 sites grouped by continent, each labelled with its latitude. Choosing one sets
 `mission.launch_site.latitude_deg` from `config/launch_sites.yaml` and says where the site is. It also enforces
 the thing a latitude implies: **a direct ascent cannot reach an inclination below the site latitude**, because
 `sin β = cos i / cos φ` has no solution there. If the inclination you had asked for is under that floor, it is
@@ -706,9 +714,11 @@ changed but not saved travels with it.
 Every field carries a human label rather than its YAML path. Click a label to see its description, its source and
 the path itself, which is what you need when you want to set it from the command line.
 
-**Results.** Tabs for the summary, the Δv budget, the stages, the masses and ledger, the drawings, the geometry
-and the checks — plus one tab per analysis that ran, each with its chart and its headline numbers, and the full
-report. The summary carries the KPI cards, **what governs this design** when the driver analyses have run, and
+**Results.** Tabs for the summary, the Δv budget, the stages, the masses and ledger, the drawings, the geometry,
+trade & compare, sensitivity and the checks — plus one tab per analysis that ran, each with its chart and its headline
+numbers, and the full report. Any table with three or more rows sorts by a click on a heading: numbers largest first,
+words A to Z. Three tabs exist but are hidden at present: Architecture & families (§7.17c), Model checks and Drop zones
+(§7.8). The summary carries the KPI cards, **what governs this design** when the driver analyses have run, and
 the warnings. From there you can download the report, the workbook, and the CAD export as DXF, STL, OBJ or 3MF — plus STEP and BREP when a geometry kernel is installed (§11.4.1); the buttons for those are shown greyed with the reason when it is not.
 
 **Set as baseline** freezes a result; later runs then show the percentage change against it, which is what you
@@ -719,10 +729,13 @@ top of a file, shows you exactly which ones are active, and saving writes them b
 
 ### 7.3 The optional studies
 
-Three studies answer the questions that come straight after "how big is it". Each is off by default because each
+Eleven analyses can be picked, in the GUI under *Analyses…* or by a switch on the command line: trajectory, loads,
+structure, stability, payload environment, pitch-programme optimisation, internal ballistics, capability, cost,
+uncertainty and staging optimum. The first three below answer the questions that come straight after "how big is it";
+the rest have sections of their own. Each is off by default because each
 costs time, each adds its own section to the report, and each writes its own chart into the output directory.
 
-**`--performance` — what this vehicle lifts elsewhere (report section 5).**
+**`--performance` — what this vehicle lifts elsewhere.**
 The sizing loop answers "how big must it be for this mission". This answers the opposite: freeze the vehicle —
 every stage keeps its dry mass, propellant load, mass flow, burn time and Isp — and find the payload whose
 achieved Δv equals the requirement for another orbit. The result is the carpet plot of book Sec. 3.8: payload
@@ -735,32 +748,31 @@ Limits: an inclination below the launch-site latitude is reported unreachable ra
 sweep stops at 1,000 km because the book's loss regressions are LEO fits, and with strap-ons the parallel phases
 are held at the design value, so a boosted vehicle's curve is a first-order answer near its design payload.
 
-**`--uncertainty` — how wrong the mass could be (report section 9).**
+**`--uncertainty` — how wrong the mass could be.**
 A single GLOM number carries false precision: the MERs behind it are fits to a historical population, and this
-tool's own validation puts the median GLOM error at 17 %. This study gives every MER group a 1-sigma scatter
+tool's own validation puts the median GLOM error at 13 % for liquid vehicles. This study gives every MER group a 1-sigma scatter
 (`mer_scatter` in the assumptions file — every value an **assumption**, documented there), draws log-normal
 multipliers, and re-sizes the vehicle for each sample. You get the distribution, the 5/50/95 percentiles, and a
-one-at-a-time tornado of what the spread is made of. On the default design: 372 / 415 / 474 t, with residual
-propellant and delivered Isp the two biggest contributors. Samples that fail to converge are counted and
+one-at-a-time tornado of what the spread is made of. On the default design: 367 / 417 / 497 t. Samples that fail to converge are counted and
 reported, not dropped — a design that falls apart under plausible scatter is a finding. `--mc-samples N` sets the
 count (default 200, about 25 s); set any group's sigma to 0 to freeze it.
 
-**`--staging` — is the stage split right (report section 10).**
+**`--staging` — is the stage split right.**
 The book solves the optimum split in closed form with a Lagrange multiplier (Eqs. 5:32–5:33), assuming each
 step's structural ratio and exhaust speed are fixed. In this tool they are not — a stage's structural factor
 falls out of a mass build-up that depends on its own size — so this study runs both the closed form and the
 numerical search and prints them side by side over a sweep of GLOM against the stage-1 share. The gap between
-them is the price of that assumption (about 4 % of GLOM on the default design). Also available in the API:
+them is the price of that assumption (0.3 % of GLOM on the default design, 397.2 t against 398.6 t). Also available in the API:
 `optimization.restricted_staging_speed_ratio` implements Eq. 5:40, which reproduces the book's Fig. 5.11 exactly
 and answers "is another step worth it" — after three, almost never.
 
-**`--trajectory` — fly it, don't estimate it (report section 6).** See 7.5.
+**`--trajectory` — fly it, don't estimate it.** See 7.5.
 
-`--all-studies` runs all four.
+`--all-studies` runs everything that applies to the design.
 
 ### 7.4 Real engines: the database
 
-`config/engine_database.yaml` holds 13 real engines and motors so a design can stop flying a rubber engine.
+`config/engine_database.yaml` holds 35 real engines and 16 motors so a design can stop flying a rubber engine.
 Reference one from a stage:
 
 ```yaml
@@ -808,7 +820,7 @@ RK4 at a 0.25 s step (the book's own example uses Euler and says so), step-size 
 
 **Guidance** is the book's gravity turn (Sec. 6.4.7): a vertical rise, one pitch kick, then free flight — the
 pitch rate is zero only while γ is exactly 90°, so the kick is what starts the turn. The kick angle is found by
-the book's own method of shooting (Fig. 6.18), and it is *small*: 0.31° for the default design, and the book
+the book's own method of shooting (Fig. 6.18), and it is *small*: 0.24° for the default design, and the book
 warns it "can be very small, much smaller than a degree". Above the atmosphere the vehicle hands over to a
 commanded flight path angle running linearly to zero at the end of the last burn, which is what real vehicles do
 and what the book's Shuttle example shows (§6.4.8); the thrust then sits at an angle to the velocity and the tool
@@ -818,17 +830,28 @@ charges that as a steering loss rather than hiding it.
 
 | Loss | Integral | Default design |
 |---|---|---|
-| gravity | ∫ g sin γ dt | 1,993 m/s |
-| drag | ∫ D/m dt | 30 m/s |
-| propulsion (back pressure) | ∫ Ae·P∞/m dt | 88 m/s |
-| steering | ∫ 2T sin²(α/2)/m dt | 94 m/s |
+| gravity | ∫ g sin γ dt | 2,363 m/s |
+| drag | ∫ D/m dt | 40 m/s |
+| propulsion (back pressure) | ∫ Ae·P∞/m dt | 87 m/s |
+| steering | ∫ 2T sin²(α/2)/m dt | 104 m/s |
 
 The four losses plus the burnout speed reconstruct the vacuum ideal Δv to better than 1e-6 m/s. That identity is
 the check that this is one integration decomposed, not four separate estimates, and the tests pin it.
 
-**How good is it?** On the default design the regression the vehicle was sized with gives 2,145 m/s of lumped
-ascent losses and the integration gives 2,204 m/s — a 2.8 % difference, well inside the regression's own ±260 m/s
-RMS error. On Titan II the computed gravity loss is 1,360 m/s and drag 49 m/s, both inside the book's Table 3.4
+**How good is it?** That depends on the split. With the default design's own 44/56 split, the integration's losses are
+2,229 m/s and the vehicle reaches orbit, close to the regression it is sized with. With the 35/65 split the optimiser
+picks for lowest mass, the integration gives 2,595 m/s against the regression's 2,151 m/s: 444 m/s more, well outside the
+regression's ±260 m/s RMS error. The default design as shipped is therefore **not in orbit** in its own Trajectory tab.
+
+Almost all of that difference is gravity loss, and it comes from **how the ascent is flown**: one continuous burn, straight
+up to the target altitude, levelling off at burnout. The regression hardly depends on the split (2,139 to 2,152 m/s from
+48/52 to 33/67); the simulated loss does, from 2,133 to 2,725 m/s, and grows with the orbit altitude. Real vehicles usually
+fly to a low parking orbit and raise it. Flown to 185 km and raised to 400 km by a Hohmann transfer (125 m/s), the same
+35/65 vehicle reaches orbit with 117 m/s to spare, where the direct climb is 318 m/s short. This model has no coast and
+restart, so it cannot fly that by itself. A higher upper-stage thrust-to-weight does not help (0.7 to 1.4 was tried), and
+neither do the steering limits.
+
+On Titan II the computed gravity loss is 1,360 m/s and drag 49 m/s, both inside the book's Table 3.4
 ranges (1,150–1,534 and 40–156 m/s), with max-q at 79 s — the book says 50–90 s.
 
 **Drag** defaults to `geometry`: the drag coefficient is built up from the vehicle's own shape - skin friction,
@@ -911,30 +934,15 @@ v0.23.1 they had no way in from the browser.
 
 Still command-line only: `import-vehicles`, which turns a CSV or JSON vehicle sheet into design files.
 
-### 7.8 Drop zones: where the jettisoned hardware lands
+### 7.8 Drop zones (hidden)
 
-The **Drop zones** tab, and `hazard.areas()` in Python. Each spent stage, fairing and strap-on is flown from
-the state it separates at down to the surface, giving an impact point and an along-track dispersion interval,
-exportable as **KML** (Google Earth) or **GeoJSON** (QGIS). Full write-up, including the error budget:
-[`DROP_ZONES.md`](DROP_ZONES.md).
+> **Hidden at present.** The Drop zones tab is not offered in the GUI. Its map has no coastline, so it cannot say whether
+> an area is over land, and an area drawn on a map looks more certain than it is.
 
-Four things are worth knowing before you use it:
-
-* **It is not a range-safety product.** No breakup model, no wind, no Coriolis in the descent, no probability
-  of casualty, and no range-safety azimuth corridors. Do not clear an area with it.
-* **The hazard area is set by performance knowledge, not by drag.** A tumbling stage's drag coefficient, swept
-  across its whole plausible range, moves the impact point about 1 %; a 5 % separation-speed error moves it
-  100 km. At roughly 20 km per percent, a solid vehicle carrying the 33 % mass error of §10 has its drop zones
-  uncertain by a hundred kilometres or more.
-* **The width of every box is an assumption**, floored at the Coriolis cross-range the descent model omits. A
-  pitch-plane trajectory has no cross-range state, so nothing here predicts it.
-* **Some items get no box.** An upper stage near orbital speed is reported as staying in orbit; one whose
-  dispersion straddles that line is reported as *not localisable*, with its nominal point and no area.
-
-A **launch-site longitude** is needed for coordinates and for nothing else. Name a site from the library and
-latitude and longitude are both filled; otherwise the tool gives the downrange distances and says why there is
-no map. The in-page map is drawn without a basemap so the GUI keeps working offline — export the KML to see
-the areas over coastlines.
+The calculation is still in the program, as `hazard.areas()` in Python, with KML and GeoJSON export. It flies each spent
+stage, fairing and strap-on from where it separates to the ground and gives an impact point with a spread. **It is not a
+range-safety product and must not be used to clear an area.** [`DROP_ZONES.md`](DROP_ZONES.md) has the method and the
+error budget. The launch-site longitude is read by this study and by nothing else, so its field is hidden too.
 
 ### 7.9 Ground and flight loads
 
@@ -975,15 +983,14 @@ F_gimbal from ΣM about the CM = 0        n_z = F_lat/(m·g0)      n_x = (T−D)
 ```
 
 Both **max-q** and **max-qα** are computed, because the book states outright that which of the two governs
-cannot be known before a trajectory exists (p.572). On the default design max-qα comes 6 s earlier and bends the
-vehicle 21 % harder.
+cannot be known before a trajectory exists (p.572). On the default design max-qα comes 4 s earlier and bends the
+vehicle 15 % harder.
 
 **Two more cases, for the same reason.** *Lift-off* is the same wind with the vehicle accelerating at its
 lift-off thrust-to-weight: identical bending, axial load scaled by n_x. *Maximum axial acceleration* is the
-instant of greatest n_x, which on a first stage is three times the max-q value and arrives at the end of the
-burn. Whether it governs the axial load is then a result rather than an assumption — and on the default design
-it does **not**: at 6.2 g the stage is nearly empty, so there is little mass left above a station to compress
-it, and max-q's 2.1 g acting on a full vehicle wins. The report names which case governs axial load and which
+instant of greatest n_x, which arrives at the end of a burn. Whether it governs the axial load is then a result rather than an assumption — and on the default design
+it does **not**: at 5.1 g the stage is nearly empty, so there is little mass left above a station to compress
+it, and max-q's 2.0 g acting on a much heavier vehicle wins. The report names which case governs axial load and which
 governs bending.
 
 **Three self-checks** run on every case and are printed with it. On the ground, the axial curve at the base must
@@ -1021,7 +1028,7 @@ Cmα         = Σ CNα_i (z_i − z_cm) / L          positive = a disturbance gr
 ```
 
 The report gives the panel table, the CP against the CM through the whole atmospheric ascent, and the static
-margin between them. The default design runs at about −5.5 calibers: statically unstable throughout, which is
+margin between them. The default design's worst is about −5.1 calibers: statically unstable throughout, which is
 the normal state — *"Most space launchers have no fins and are unstable, so some sort of stabilizing system is
 required to keep the vehicle from diverging from its trajectory"* (p.357). The gimbal angle needed to hold it
 is in the loads section; how fast an uncontrolled disturbance would diverge is a control question this tool
@@ -1060,8 +1067,7 @@ exactly rather than being penalised for missing it. The objective is burnout spe
 is the same as minimising the losses.
 
 **The optimum sits on a constraint, never at a stationary point.** Steering over earlier always trades gravity
-loss for steering loss at a profit — on the default design, 164 m/s of gravity loss for 60 m/s of steering and
-drag — so nothing in the objective stops it. What stops it is the vehicle: dynamic pressure, the product qα
+loss for steering loss at a profit, so nothing in the objective stops it. What stops it is the vehicle: dynamic pressure, the product qα
 that sets air loads, and axial acceleration. Those limits live in the design's `constraints` block:
 
 | Key | Default | Where it comes from |
@@ -1078,7 +1084,8 @@ its box and the report says the result means nothing.
 
 **What the answer is worth** is priced in payload: the vehicle is flown heavier and heavier, everything else
 frozen, until burnout speed just meets what the orbit needs. On the default design the optimised programme is
-worth +93 m/s and **+430 kg, 4.1 % more payload**, with the optimum pinned to the qα limit. That is the value
+worth +43 m/s of burnout speed, with the optimum pinned to the qα limit; that vehicle does not reach its orbit either
+way (§7.5), so it has no payload to price. That is the value
 on the vehicle *as built* — the sizing loop still uses the regression losses, so nothing here is fed back into
 the design.
 
@@ -1103,7 +1110,7 @@ ascent, not on average:
 M_A is the aerodynamic pitching moment the gust-induced angle of attack produces about the CM, from the §7.10
 build-up; I_y and the CM come from the mass ledger drained to the mass the trajectory had; the moment arm runs
 from the gimbal plane to the CM and grows as the first stage empties. The default design passes all four, with
-a time to double of about 3 s — comparable to the Saturn V's 3.31 s at max-q, which the tests reproduce from
+a time to double of 3.5 s — comparable to the Saturn V's 3.31 s at max-q, which the tests reproduce from
 the book's own printed inertia and moment.
 
 Only the first line of the deflection budget is the vehicle's own. The other four contributors are the book's
@@ -1147,8 +1154,8 @@ sizes the structure, not the flight.
 buckle at 288–364 psi — "hardly anything" (p.637) — orders of magnitude below their strength.
 
 **The mass comparison is the useful output.** The sized monocoque shells are put beside what the Chapter 8 mass
-relationships carry for the same hardware. On the default design that is 11,946 kg against 5,858 kg, a factor of
-2.04. Neither number is wrong: the relationships are fitted to real vehicles, real vehicles are not monocoque,
+relationships carry for the same hardware. On the default design that is 12,908 kg against 5,708 kg, a factor of
+2.26. Neither number is wrong: the relationships are fitted to real vehicles, real vehicles are not monocoque,
 and the gap is the mass that rings, stringers, waffle and isogrid buy back. It is **not** a correction to apply
 — nothing here is fed back into the vehicle, so the masses in the mass statement are still the MER ones and the
 vehicle in the report is not the vehicle that was analysed.
@@ -1210,33 +1217,35 @@ and any re-sizing of the casing for the peak pressure found.
 python -m launch_vehicle.main run --design config/default_design.yaml --out outputs --cost
 ```
 
-Chapter 17 introduces TRANSCOST and prints five of its cost-estimating relationships on Figs. 17.12–17.16, as
-development effort in work-years against a reference mass:
+In the GUI, pick **Cost** in Analyses; a **Cost** tab then appears with the results. Everything is in work-years first,
+because those do not change with inflation or currency, with dollars beside them.
 
-| Code | Relationship | Mass basis |
+| Code | Development effort | Mass basis |
 |---|---|---|
 | ES | H = 16.3 M^0.54 | solid motor net mass |
-| EL | H = 277 M^0.48 | turbopump engine dry mass |
-| EP | H = 167 M^0.35 | pressure-fed engine dry mass |
-| VR | H = 10.4 M^0.60 | solid booster net mass |
-| VS | H = 100 M^0.555 | vehicle dry mass **without** engines |
+| EL | H = 277 M^0.48 | **one** turbopump engine's dry mass |
+| EP | H = 167 M^0.35 | **one** pressure-fed engine's dry mass |
+| VR | H = 10.4 M^0.60 | one solid booster's net mass (from 10 t; ES below) |
+| VS | H = 100 M^0.555 | stage dry mass **without** engines; the first liquid stage also carries the fairing and adapter |
 
-Those five are the whole of the cost model this book contains in equation form. The production submodel's
-coefficients, the learning curve and the operations model are all deferred to Koelle's TRANSCOST handbook.
+These are the book's (Figs. 17.12-17.16). The factors, production, learning and operations come from the handbook the
+book defers to: Koelle, *Handbook of Cost Engineering*, TRANSCOST 7.2 (2007).
 
-**So development cost is a CER result and cost per flight is not.** The per-flight figure is §17.5.3's rule of
-thumb — "assume an average cost of $5,000 per pound to orbit" — reported with the $2,000–$120,000 per pound
-range the same section gives. That range is a factor of 60 wide, and it is the honest width of what this book
-supports. The report puts real prices for comparable vehicles beside it, from the book's Table 17.5.
+**On the tab you can set** where the vehicle is developed (productivity f8), launches per year, number of flights,
+years to first flight, share of the payload sold, assembly mode and cost year; and for each element f1 (development
+status), f2 (technical quality, stages and engines), f3 (team experience) and whether it is **already developed**, which
+charges no development. Changing one re-costs at once without re-sizing, and Save keeps them under `mission.cost`.
 
-**The f-factors dominate the answer.** TRANSCOST multiplies each CER by development-status, technical-quality
-and team-experience factors; the book defers their values to its reference and prints one worked set, for
-Ariane 5, where they run from 0.77 to 1.6. Set `mission.cost_year` for the constant-dollar year.
+**The factors dominate the answer.** With all of them neutral the engine relation misses Koelle's ten engines by
+between 34 % low and 100 % high. Hover over a box for his guidance. f2 of a liquid stage is computed from its net mass
+fraction; clear the box to go back to that.
 
-**Verification.** All five rows of the book's Ariane 5 table (Table 17.4) are re-run in the tests. Both engine
-CERs reproduce exactly. Three rows do not, in three different ways — documented in `docs/VALIDATION_REPORT.md`.
-End to end the programme comes out at 41,679 work-years against the 39,300 ESA actually spent, 6.1 % high and
-inside TRANSCOST's own stated ±20 %.
+**Cost per flight** is one vehicle's production averaged over the programme, plus ground and mission operations, plus
+11.5 % indirect. It is a cost under conventional methods and not a price.
+
+**How good is it?** [`COST_VALIDATION.md`](COST_VALIDATION.md), written by `tools/validate_cost.py`: the relations
+reproduce Koelle's worked examples; Saturn V and Ariane 5 development come out within 6 % with single parts up to 41 % off;
+cost per flight is 1.7 times his tables at the median of 13 vehicles.
 
 ### 7.16 Payload environment
 
@@ -1254,7 +1263,7 @@ dynamic part comes from a coupled-loads analysis of the vehicle and spacecraft t
 modes this tool does not compute. The increments used are taken from those two real guides and are labelled as
 stand-ins on every row.
 
-The default design comes out at 7.2 g axial (stage-1 burnout) and 2.0 g lateral (lift-off), inside the book's
+The default design comes out at 7.7 g axial (stage-2 burnout) and 2.0 g lateral, inside the book's
 expectation of 4–8 g and 1.5–3 g for a preliminary design.
 
 **What a real guide has that this does not:** the acoustic and shock specification (Chapter 11 describes
@@ -1604,7 +1613,7 @@ field map is one dictionary and adding an adapter for it is small.
 Three libraries, all in the same `{v,u,d,s,t}` form as everything else, all following the same rule: **they fill
 what your design leaves out and never override what it states.**
 
-**Propellants** (`assumptions.propellants`) — 15 entries. LOX, RP-1, LH2, LCH4, N2O4, A-50 and UDMH as before,
+**Propellants** (`assumptions.propellants`) — 15 entries: LOX, RP-1, LH2, LCH4, N2O4, A-50 and UDMH,
 plus propane, MMH, hydrazine, ethanol, methanol and nitromethane from the book's Tables 4.5 and 4.6 (p.238),
 plus two grades of high-test peroxide, **HTP-90** and **HTP-98**, as oxidisers.
 
@@ -1638,7 +1647,7 @@ with, so it cannot disagree with the geometry. Recomputing it reproduces the spe
 for six of its seven rows inside 2 %, and that same check is what independently confirms the Aerozine-50 density
 in Table 4.6 is a misprint — see §10.
 
-**Engines** (`config/engine_database.yaml`) — 33 entries, up from 13. Most are now the book's own tables: the
+**Engines** (`config/engine_database.yaml`) — 35 engines and 16 motors. Most engines are the book's own tables: the
 eighteen-engine summary in Table 4.14 (p.245), the F-1 (Table 4.11), the J-2 (Table 4.12) and the RS-68
 (Table 4.13), alongside the public-source rows already there and three peroxide engines from published papers.
 Naming one now also supplies the **propellants and the mixture ratio**, not just the performance:
@@ -1836,6 +1845,7 @@ python tools/run_tests.py -k dv_fractions       # only tests whose name matches
 The fallback runner used to ignore whatever you passed it and run everything regardless, which is worse than
 slow: it tells you that you re-checked one file when you re-checked the whole tree as it stood when the run
 began. It now selects, and a name that matches nothing is an error rather than a forty-minute full run.
+Run one suite at a time: the full suite takes 20 to 45 minutes, and several at once have run out of memory.
 
 The suite covers the rocket equation and staging algebra, orbit and delta-v budget, tank and
 casing geometry (closed form vs numerical integration), the engine-dimensioning equations against the book's
@@ -1872,7 +1882,7 @@ res = size_vehicle(spec)
 print(res.glom_kg, res.status, [s.structural_factor_s for s in res.stages])
 ```
 
-Modules in `src/launch_vehicle/`: `aerodynamics` · `architecture` · `ascent_opt` · `atmosphere` · `boosters` · `cad_export` · `cad_kernel` · `charts` · `config_io` · `control` · `convergence` · `cost` · `debris` · `delta_v` · `engine_db` · `engine_geometry` · `families` · `geodesy` · `geometry` · `gui_meta` · `hazard` · `inertia` · `launch_sites` · `loads` · `main` · `mass_budget` · `mass_properties` · `method_register` · `models` · `optimization` · `orbit` · `payload_env` · `performance` · `propellant_db` · `propulsion` · `reliability` · `report` · `reporting` · `schematic_2d` · `sensitivity` · `solid_inert` · `solid_motor` · `stage_count` · `stage_type` · `staging` · `strap_ons` · `structure` · `studies` · `tank_sizing` · `trajectory` · `uncertainty` · `units` · `validation` · `vehicle_import` · `webgui` · `wind`.
+Modules in `src/launch_vehicle/`: `aerodynamics` · `architecture` · `ascent_opt` · `atmosphere` · `boosters` · `cad_export` · `cad_kernel` · `charts` · `config_io` · `control` · `convergence` · `cost` · `debris` · `delta_v` · `desktop` · `drag_buildup` · `engine_db` · `engine_geometry` · `families` · `geodesy` · `geometry` · `gui_meta` · `hazard` · `inertia` · `launch_sites` · `loads` · `main` · `mass_budget` · `mass_properties` · `method_register` · `models` · `optimization` · `orbit` · `paths` · `payload_env` · `performance` · `propellant_db` · `propulsion` · `reliability` · `report` · `reporting` · `schematic_2d` · `sensitivity` · `solid_inert` · `solid_motor` · `stage_count` · `stage_type` · `staging` · `strap_ons` · `structure` · `studies` · `tank_sizing` · `trajectory` · `uncertainty` · `units` · `user_library` · `validation` · `vehicle_import` · `webgui` · `wind`.
 
 **What it does not do:**
 
@@ -1880,6 +1890,8 @@ Modules in `src/launch_vehicle/`: `aerodynamics` · `architecture` · `ascent_op
   not re-sized around the better ascent the optimiser finds, and no motor casing is re-sized for the chamber
   pressure its own grain reaches.
 * **Reusable vehicles** cannot be represented, and there is no reuse economics.
+* **The lightest vehicle may not reach orbit** in its own simulated ascent (§7.5). The sizing does not check it.
+* **Drag is an estimate** from the outside shape ([`DRAG.md`](DRAG.md)).
 * **Shared-core families are biased.** The sizer never carries a core oversized for the mission being flown, so
   a family's smaller variants come out too light when sized alone, and over-predict payload when the core is
   pinned. This is measured in `docs/ACCURACY.md` section 6b, and is not corrected.

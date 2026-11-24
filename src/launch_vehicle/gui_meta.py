@@ -622,8 +622,8 @@ def place(path: str) -> tuple:
             return "Mission", "Trajectory model"
         if rest == "pad_height_m":
             return "Mission", "Winds aloft"          # it raises the vehicle into the ground-wind profile
-        if rest == "cost_year":
-            return "Mission", "Cost"
+        if rest == "cost_year" or rest.startswith("cost."):
+            return "Mission", "Cost"                 # shown on the Cost tab, not in the input list
         return "Mission", "Payload and orbit"
     if p.startswith("fairing."):
         return "Payload fairing", "Fairing"

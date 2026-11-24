@@ -679,7 +679,8 @@ function attentionPaths() {
   }
   const out = [];
   for (const it of S.items) {
-    if (!want.has(it.path) || filledBySite.has(it.path) || filledByLibrary.has(it.path)) continue;
+    if (!want.has(it.path) || filledBySite.has(it.path) || filledByLibrary.has(it.path)
+        || HIDDEN_INPUTS.includes(it.path)) continue;
     const v = (it.path in S.overrides) ? S.overrides[it.path] : it.value;
     if (isBlank(v)) out.push(it);
   }
@@ -1085,6 +1086,8 @@ function renderInputs() {
     const needs = dragInputFor(it.path);
     if (needs && needs !== drag) continue;       // an input of a drag model that is not the one selected
     if (hiddenByChoice(it)) continue;            // an input the method chosen beside it never reads
+    if (it.path === "mission.cost_year" || it.path.startsWith("mission.cost.")) continue;   // on the Cost tab
+    if (HIDDEN_INPUTS.includes(it.path)) continue;
     if (!secs.has(it.section)) secs.set(it.section, new Map());
     const tops = secs.get(it.section);
     if (!tops.has(it.topic)) tops.set(it.topic, []);
@@ -1308,8 +1311,12 @@ const STUDY_TABS = {
 /* Tabs that exist but are not offered. Their code and their server routes are kept, so putting one back is
    deleting its name from this list. "model" is validation evidence for the methods rather than anything about
    the design that is open; "architecture" lists every launcher family on disk whatever design is open, which
-   reads as if an Ariane 6 family could be sized from a two-stage example. Hidden at the owner's request. */
-const HIDDEN_TABS = ["architecture", "model"];
+   reads as if an Ariane 6 family could be sized from a two-stage example. "dropzones" draws areas on a map without
+   a coastline, so it cannot say whether one is over land, and looks more certain than it is. Hidden at the owner's
+   request. */
+const HIDDEN_TABS = ["architecture", "model", "dropzones"];
+/* An input nothing on show reads: the longitude places drop zones on the map and does nothing else. */
+const HIDDEN_INPUTS = HIDDEN_TABS.includes("dropzones") ? ["mission.launch_site.longitude_deg"] : [];
 function TABS() {
   let base = [["summary", "Summary"], ["budget", "Δv budget"], ["stages", "Stages"], ["mass", "Masses"],
                 ["drawings", "Drawings"], ["geometry", "Geometry"], ["dropzones", "Drop zones"],
@@ -1320,6 +1327,139 @@ function TABS() {
   for (const k of (S.res ? S.res.studies || [] : [])) if (STUDY_TABS[k]) base.push([STUDY_TABS[k][0], STUDY_TABS[k][1]]);
   base.push(["report", "Report"]);
   return base;
+}
+/* ------------------------------------------------------------------ Cost tab */
+/* Offered only when Cost is picked in Analyses, like every analysis tab. Its settings change the estimate and not
+   the vehicle, so they are here rather than in the input list, and changing one re-costs without re-sizing. They
+   are kept as overrides under mission.cost, so Save writes them into the design. */
+const costPath = k => k === "year" ? "mission.cost_year" : "mission.cost." + k;
+function costValue(k) {
+  const path = costPath(k), it = S.items.find(i => i.path === path);
+  return path in S.overrides ? S.overrides[path] : it ? it.value : null;
+}
+function costInputs() {
+  const out = {};
+  for (const it of S.items) if (it.path.startsWith("mission.cost.")) out[it.path.slice(13)] = it.value;
+  for (const k in S.overrides) if (k.startsWith("mission.cost.")) out[k.slice(13)] = S.overrides[k];
+  return out;
+}
+async function costSet(k, value) {
+  const path = costPath(k), it = S.items.find(i => i.path === path), had = path in S.overrides, before = S.overrides[path];
+  if (it ? JSON.stringify(value) === JSON.stringify(it.value) : value === null) delete S.overrides[path];
+  else S.overrides[path] = value;
+  try {
+    const j = await api("/api/cost", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({token: S.res.token, year: costValue("year") || 2010, inputs: costInputs()})});
+    S.res.study_summary.cost = j;
+    S.costError = "";
+    S.dirty = true;
+  } catch (e) {
+    if (had) S.overrides[path] = before; else delete S.overrides[path];
+    S.costError = e.message;
+  }
+  render();
+}
+function costBox(k, shown, attrs) {
+  return el("input", Object.assign({type: "number", step: "any", value: shown === null || shown === undefined ? "" : shown,
+    style: "width:74px", onchange: ev => costSet(k, ev.target.value === "" ? null : Number(ev.target.value))}, attrs || {}));
+}
+function costPick(k, options, now) {
+  const n = el("select", {onchange: ev => costSet(k, ev.target.value)});
+  for (const [v, lab] of options) n.append(el("option", {value: v, text: lab}));
+  n.value = now;
+  return n;
+}
+function costTab(v, c) {
+  const M = w => "$" + fmt(w * c.work_year_usd / 1e6, w * c.work_year_usd < 1e8 ? 1 : 0) + " M";
+  const W = w => fmt(w, Math.abs(w) < 100 ? 1 : 0);
+  const dol = `Dollars (${c.year})`;
+  if (S.costError) v.append(el("div", {class: "msg bad", text: "Not changed: " + S.costError}));
+  v.append(el("div", {class: "kpi"}, [
+    ["Development", W(c.development_wyr) + " work-years", M(c.development_wyr)],
+    ["Average team", fmt(c.average_team) + " people", `over ${fmt(c.development_years, 1)} years`],
+    ["Cost per flight", W(c.flight_wyr) + " work-years", M(c.flight_wyr)],
+    ["Per tonne of payload", W(c.wyr_per_tonne) + " work-years", "$" + fmt(c.usd_per_kg) + " per kg"],
+  ].map(([a, b, d]) => el("div", {}, [el("span", {text: a}), el("b", {text: b}),
+    el("span", {text: d})]))));
+
+  v.append(el("h3", {class: "sect", text: "Assumptions"}));
+  v.append(el("p", {class: "small", text: "These change the estimate, not the vehicle, and take effect at once. Save keeps them with the design."}));
+  const defs = c.input_defs.map(d => {
+    let box;
+    if (d.key === "region") box = costPick(d.key, c.regions, c.inputs.region);
+    else if (d.key === "assembly") box = costPick(d.key, c.assemblies, c.inputs.assembly);
+    else box = costBox(d.key, costValue(d.key) === null ? d.default : costValue(d.key),
+                       {placeholder: d.key === "development_years" ? fmt(c.development_years, 1) : "", "data-cost": d.key});
+    return [el("span", {text: d.label}), box, d.units === "-" ? "" : d.units, d.help];
+  });
+  defs.push([el("span", {text: "Cost year"}), costBox("year", c.year, {"data-cost": "year", step: "1"}), "year",
+    `One US work-year is $${fmt(c.work_year_usd)}: ${c.work_year_source}. A work-year is ${fmt(c.hours_per_year)} hours.`]);
+  v.append(plainTable(["Setting", "Value", "", "What it does"], defs));
+
+  v.append(el("h3", {class: "sect", text: "Development"}));
+  v.append(plainTable(["Element", "Based on", "Mass [kg]", "Relation [WYr]",
+    "f1", "f2", "f3", "f8", "Already developed", "Effort [WYr]", "Share"],
+    c.elements.map(e => {
+      const tick = el("input", {type: "checkbox", onchange: ev => costSet(e.key + "_existing", ev.target.checked)});
+      tick.checked = !!e.existing;
+      return [e.element + (e.note ? ` <span class="small">(${e.note})</span>` : ""), e.basis, fmt(e.mass_kg), W(e.wyr_cer),
+        costBox(e.key + "_f1", e.f1, {style: "width:54px", title: c.f1_guide, "data-cost": e.key + "_f1"}),
+        e.code === "VS" || e.code === "EL" ? costBox(e.key + "_f2", e.f2 === null ? 1 : Number(e.f2.toFixed(3)),
+          {style: "width:60px", title: e.f2_computed ? `Computed from this stage: reference net mass fraction ${e.k_ref.toFixed(3)} over ${e.k_eff.toFixed(3)}. Clear the box to go back to the computed value.`
+            : "Technical quality. Clear the box for the default."}) : "–",
+        costBox(e.key + "_f3", e.f3, {style: "width:54px", title: c.f3_guide}), e.f8.toFixed(2), tick,
+        e.existing ? "–" : W(e.wyr), e.existing ? "–" : fmt(100 * e.share, 0) + " %"];
+    }), [2, 3, 9, 10]));
+  v.append(table(["Total", "Work-years", dol], [
+    ["Sum of the elements", W(c.development_wyr / c.f0), M(c.development_wyr / c.f0)],
+    [`Systems engineering, × 1.04<sup>${c.n_stages}</sup> = ${c.f0.toFixed(3)}`, W(c.development_wyr - c.development_wyr / c.f0), M(c.development_wyr - c.development_wyr / c.f0)],
+    {cls: "sum", cells: ["Development", W(c.development_wyr), M(c.development_wyr)]},
+    {cls: "small", cells: [`Range, ± ${100 * c.accuracy} %`, `${W(c.development_wyr * (1 - c.accuracy))} – ${W(c.development_wyr * (1 + c.accuracy))}`,
+      `${M(c.development_wyr * (1 - c.accuracy))} – ${M(c.development_wyr * (1 + c.accuracy))}`]},
+  ], [1, 2]));
+  v.append(el("p", {class: "small", text: `Average team: ${fmt(c.average_team)} people over ${fmt(c.development_years, 1)} years (${c.development_years_from}).`}));
+
+  v.append(el("h3", {class: "sect", text: "Cost per flight"}));
+  const nf = fmt(c.inputs.total_flights);
+  v.append(table(["Part", "Work-years", dol], [
+    [`Vehicle production, average of ${nf}`, W(c.production_wyr), M(c.production_wyr)],
+    ["Ground operations", W(c.ground_wyr), M(c.ground_wyr)],
+    ["Launch and mission operations", W(c.mission_wyr), M(c.mission_wyr)],
+    ["Indirect (11.5 %)", W(c.indirect_wyr), M(c.indirect_wyr)],
+    {cls: "sum", cells: ["Cost per flight", W(c.flight_wyr), M(c.flight_wyr)]},
+    {cls: "small", cells: [`With development spread over ${nf} flights`, W(c.flight_wyr_with_development), M(c.flight_wyr_with_development)]},
+    {cls: "small", cells: ["First vehicle built", W(c.first_vehicle_wyr), M(c.first_vehicle_wyr)]},
+    {cls: "small", cells: [`Per tonne, with ${fmt(100 * c.inputs.payload_utilisation)} % of the capacity sold`, W(c.wyr_per_tonne_utilised), M(c.wyr_per_tonne_utilised)]},
+  ], [1, 2]));
+  v.append(table(["Production element", "Per vehicle", "Mass [kg]", "First unit [WYr]", "Learning p", "Average / first", "Per vehicle [WYr]", "Source"],
+    c.production.map(q => [q.element, String(q.n), fmt(q.mass_kg), W(q.first_unit_wyr), q.p.toFixed(3), q.f4.toFixed(2), W(q.wyr), q.source]), [1, 2, 3, 4, 5, 6]));
+
+  v.append(el("h3", {class: "sect", text: "Cross-checks"}));
+  const checks = [["This estimate", W(c.flight_wyr), M(c.flight_wyr)]];
+  if (c.trend_wyr !== null) checks.push(["Trend of real vehicles, +100 % / −50 % (fit of the book's Table 17.5)",
+    `${W(c.trend_wyr)} (${W(c.trend_band_wyr[0])} – ${W(c.trend_band_wyr[1])})`, `${M(c.trend_wyr)} (${M(c.trend_band_wyr[0])} – ${M(c.trend_band_wyr[1])})`]);
+  checks.push(["Rule of thumb, $5,000 per pound (book p.995)", "–", "$" + fmt(c.rule_usd / 1e6) + " M"]);
+  v.append(plainTable(["Basis", "Work-years per flight", "Dollars"], checks, [1, 2]));
+  if (c.comparables.length)
+    v.append(table(["Real vehicle (book Table 17.5, ca. 2013)", "LEO payload [kg]", "Work-years per flight", "Price [M]", "Currency"],
+      c.comparables.map(x => [x.name, fmt(x.leo_kg), x.wyr_per_flight ? [...new Set(x.wyr_per_flight)].map(n => fmt(n)).join(" – ") : "–",
+        [...new Set([x.price_low, x.price_high])].map(n => fmt(n / 1e6, n < 1e8 && n % 1e6 ? 1 : 0)).join(" – "), x.currency]), [1, 2, 3]));
+  for (const t of c.notes) v.append(el("p", {class: "small", text: t}));
+}
+/* a table whose cells are controls: never sorted, so a box being typed in cannot jump */
+function plainTable(headers, rows, numeric) {
+  const t = el("table"), h = el("tr");
+  headers.forEach((x, i) => h.append(el("th", {class: (numeric || []).includes(i) ? "n" : "", html: x})));
+  t.append(el("thead", {}, [h]));
+  const b = el("tbody");
+  for (const r of rows) {
+    const tr = el("tr");
+    r.forEach((c, i) => { const td = el("td", {class: (numeric || []).includes(i) ? "n" : ""});
+      if (c instanceof Node) td.append(c); else td.innerHTML = String(c); tr.append(td); });
+    b.append(tr);
+  }
+  t.append(b);
+  return t;
 }
 function renderTabs() {
   const n = $("#tabs"); n.textContent = "";
@@ -2008,7 +2148,10 @@ function render() {
         `t = ${fmt(ss.control.t_s, 0)} s, trim ${fmt(ss.control.trim_deg, 2)}°`
         + (ss.control.trim_note ? ` — ${ss.control.trim_note}` : "")]);
       if (ss.payload_env) rows.push(["Payload load factors", `${fmt(ss.payload_env.axial_g, 1)} g axial, ${fmt(ss.payload_env.lateral_g, 1)} g lateral`, ss.payload_env.event]);
-      if (ss.cost) rows.push(["Development cost", "$" + fmt(ss.cost.development_usd / 1e6) + " M", `${ss.cost.year} dollars`]);
+      if (ss.cost) {
+        rows.push(["Development", `${fmt(ss.cost.development_wyr)} work-years`, `$${fmt(ss.cost.development_usd / 1e6)} M in ${ss.cost.year} dollars`]);
+        rows.push(["Cost per flight", `${fmt(ss.cost.flight_wyr)} work-years`, `$${fmt(ss.cost.flight_usd / 1e6)} M in ${ss.cost.year} dollars`]);
+      }
       if (rows.length) v.append(table(["What governs", "Value", "Where"], rows, [1]));
     } else {
       v.append(el("p", {class: "small", text: "Pick analyses in the toolbar to see what governs this design — loads, structure, trajectory and cost."}));
@@ -2264,7 +2407,8 @@ function render() {
         v.append(box);
       }
       if (S.tab === "trajectory" && ss && ss.orbit) v.append(orbitCheck(ss.orbit));
-      if (ss) {
+      if (S.tab === "cost" && ss) costTab(v, ss);
+      else if (ss) {
         const rows = Object.entries(ss).filter(([, x]) => x !== null && x !== undefined && typeof x !== "object")
           .map(([k, x]) => [SUMMARY_LABELS[k] || k.replace(/_/g, " "),
                             typeof x === "number" ? fmt(x, Math.abs(x) < 100 ? 2 : 0)

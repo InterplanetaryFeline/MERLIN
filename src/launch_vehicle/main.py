@@ -245,7 +245,7 @@ def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, appli
             if verbose:
                 print(f"  cost: {cst.development_wyr:,.0f} work-years development "
                       f"(${cst.development_usd/1e9:,.1f} B, {cst.year} dollars); "
-                      f"${cst.per_flight_central_usd/1e6:,.0f} M per flight by the rule of thumb")
+                      f"{cst.flight_wyr:,.0f} work-years (${cst.flight_usd/1e6:,.0f} M) per flight")
         except Exception as ex:                                  # noqa: BLE001
             print(f"    cost estimate skipped: {type(ex).__name__}: {ex}", file=sys.stderr)
     if "uncertainty" in want:

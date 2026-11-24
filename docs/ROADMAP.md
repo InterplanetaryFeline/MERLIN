@@ -12,18 +12,19 @@ Reference throughout: Edberg & Costa, *Design of Rockets and Space Launch Vehicl
 
 ---
 
-## 1. Where the tool stands (v1.0)
+## 1. Where the tool stands (v1.2.1, and the unreleased cost work)
 
 It sizes an expendable multistage vehicle from a mission statement and closes the mass budget, then analyses
 that vehicle: a 3-DoF ascent trajectory and its optimisation, ground and flight loads with a user's own
 winds-aloft profile, shell stress and buckling, aerodynamics and stability, solid internal ballistics, payload
-environments, development cost, performance envelopes, Monte-Carlo uncertainty, optimum staging, jettison drop
-zones with KML/GeoJSON export, trade studies, multi-design comparison, launcher families and pinned-architecture
-trades. It exports a report, an Excel
-workbook, DXF/STL/OBJ/3MF, and STEP through an optional geometry kernel. **104 engineering methods** are
+environments, development, production and per-flight cost, performance envelopes, Monte-Carlo uncertainty, optimum
+staging, trade studies, multi-design comparison, and from the command line launcher families and pinned-architecture
+trades. Drag comes from the vehicle's own geometry, and the Trajectory tab says whether the orbit is reached. Propellants,
+combinations and tank materials can be the user's own. A drop-zone study exists and its tab is hidden. It exports a report, an Excel
+workbook, DXF/STL/OBJ/3MF, and STEP through an optional geometry kernel. **106 engineering methods** are
 registered with their book page, assumptions, limits and verification basis; **24 real
 vehicles** are in a validation set with the errors published rather than tuned away, and `docs/ACCURACY.md`
-attributes each error to its cause. The GUI is the primary interface.
+attributes each error to its cause. The GUI is the primary interface, and a Windows app packages it.
 
 What it is **not**: nothing is fed back. The structure is never re-sized to carry the loads it is shown to
 need, the vehicle is never re-sized around the better ascent the optimiser finds, and no motor casing is
@@ -63,15 +64,15 @@ exists · **partial** = part of the chapter's method is in, with the gap named �
 | Section | Topic | Status | Notes |
 |---|---|---|---|
 | 1.2 | Anatomy of an LV | **full** | the component set the layout model builds (tanks, skirts, intertank, interstage, fairing, PAF) |
-| 1.3–1.4 | Launch phases, mission elements | **partial** | phases exist as mass events (ignition, burnout, separation, fairing jettison), not as a timeline |
+| 1.3–1.4 | Launch phases, mission elements | **full** for the ascent | mass events, and an events timeline of the flown ascent (M105) |
 | 1.5 | The design process | **partial** | the tool implements the sizing loop of the process; the trade and requirements-flow parts are manual |
-| 1.6–1.7 | Launch sites and selection | **partial** | latitude and azimuth are inputs; there is no site database or site-selection trade |
+| 1.6–1.7 | Launch sites and selection | **partial** | a library of 30 sites by continent; no site-selection trade and no range azimuth limits |
 | 1.8–1.9 | The space industry | *(n/a)* | |
 
 ### Chapter 2 — Technical history (pp. 37–146)
 
-*(n/a)* as a calculation, but it is the source of the validation set: 12 of the vehicles described here are
-modelled in `validation/` and their published masses are the benchmark in `docs/VALIDATION_REPORT.md`.
+*(n/a)* as a calculation, but it is the source of the validation set: vehicles described here are among the
+24 modelled in `validation/`, whose published masses are the benchmark in `docs/ACCURACY.md`.
 
 ### Chapter 3 — Missions, orbits, energy requirements (pp. 147–210)
 
@@ -82,7 +83,7 @@ modelled in `validation/` and their published masses are the benchmark in `docs/
 | 3.4 | Required energy: all three loss models | **full** | M37 (Eqs. 3:35–3:38), M50 (Eq. 3:32), M51 (Eqs. 3:33–3:34) — all three fits available and cross-checked |
 | 3.5 | The LV velocity vector, launch-site speed | **full** | M04–M05, book Example 3.9 reproduced (errata `sin β` form) |
 | 3.6–3.7 | Direct orbit; inclination below latitude | **partial** | azimuth from inclination is in (M06); **dog-leg manoeuvres are not** |
-| 3.8 | Performance curves (payload vs orbit) | **none** | high value, low effort — see R1 |
+| 3.8 | Performance curves (payload vs orbit) | **full** | done in v0.5, R1 |
 | 3.9 | Launch windows | **none** | RAAN/launch-window geometry; see R10 |
 
 ### Chapter 4 — Propulsion (pp. 211–270)
@@ -92,8 +93,8 @@ modelled in `validation/` and their published masses are the benchmark in `docs/
 | 4.2–4.3 | Thrust equation, rocket equation, Isp, c*, C_F | **full** | M09, M15, M16; Eq. 8:1 in the errata-corrected form |
 | 4.4 | Solid-propellant motors, burn-rate law | **done in v0.8** | M43's implied-burn-rate check plus a full equilibrium internal-ballistics solution (M81–M83) for the two grain shapes the book describes completely. No erosive burning, no ignition transient, no temperature sensitivity, and no star or finocyl grains — the book gives equations for none of those |
 | 4.5 | Liquid engines | **partial** | engine mass and envelope MERs (M29, M45); feed system is a per-engine mass input |
-| 4.6 | Engine performance examples | **partial** | a small engine table exists in the assumptions; no engine database — see R2 |
-| 4.7 | Power cycles (gas generator, staged combustion, expander, electric) | **none** | cycle choice does not yet affect Isp, chamber pressure or engine mass — see R2 |
+| 4.6 | Engine performance examples | **full** | a database of 35 engines and 16 motors, R2 |
+| 4.7 | Power cycles (gas generator, staged combustion, expander, electric) | **partial** | a cycle carries a usual chamber-pressure band and raises a warning outside it, and a pressure-fed engine is costed as one; it does not change Isp or mass |
 | 4.8–4.9 | Aerospike, hybrids | **none** | out of scope for now |
 
 ### Chapter 5 — Performance and staging (pp. 271–336)
@@ -103,25 +104,26 @@ modelled in `validation/` and their published masses are the benchmark in `docs/
 | 5.1–5.4 | Mass categories, Δv in free space, SSTO | **full** | M11 (errata-confirmed σ convention), M09 |
 | 5.5–5.6 | Staging, multistage Δv | **full** | M12, M14 |
 | 5.7 | Payload ratio | **full** | reported; plus the errata's PAYFRAC plausibility check (M53) |
-| 5.8–5.9 | Unrestricted staging, optimum split, TSTO families | **partial** | numerical optimisation of the Δv split (M36) is in; the **analytical Lagrange/λ optimum of §5.8 is not** — see R4 |
+| 5.8–5.9 | Unrestricted staging, optimum split, TSTO families | **full** | numerical optimisation of the Δv split (M36), and the analytical Lagrange optimum of §5.8 beside it (R4) |
 | 5.10 | All-hydrogen Saturn V study | **full** (as a capability) | the propellant-combination comparison does exactly this kind of study |
 | 5.11 | Parallel burns and staging | **full** | M44, Eqs. 5:65–5:66, three-phase Fig. 5.21 structure, book Shuttle exercise reproduced |
-| 5.12 | Design sensitivities | **partial** | one-at-a-time sensitivity studies exist; no tornado/Monte-Carlo treatment — see R3 |
+| 5.12 | Design sensitivities | **full** | one-at-a-time sensitivity studies, and a Monte-Carlo with a tornado (R3) |
 | 5.13 | Determining component mass values | **full** | Eqs. 5:84–5:91 are the aggregate sizing path |
 
 ### Chapter 6 — Ascent trajectory analysis and optimisation (pp. 337–406)
 
 | Section | Topic | Status |
 |---|---|---|
-| 6.1–6.3 | Vertical/inclined/general flight with gravity, drag, thrust | **none** |
-| 6.4 | LV aerodynamics (C_D, normal force, centre of pressure) | **none** |
-| 6.5–6.6 | Getting to orbit; trajectory simulation | **none** |
+| 6.1–6.3 | Vertical/inclined/general flight with gravity, drag, thrust | **done in v0.6** |
+| 6.4 | LV aerodynamics (C_D, normal force, centre of pressure) | **done**: normal force in v0.7, drag from the geometry in v1.1 (not a book method) |
+| 6.5–6.6 | Getting to orbit; trajectory simulation | **done in v0.6**; the orbit check in v1.1 (M105). No coast-and-restart ascents |
 | 6.7 | Trajectory optimisation (gravity turn, pitch programme) | **done in v0.7** (M71–M73): the book's trade searched within the gravity-turn family, with the limits of Fig. 9.36. Not a free-profile optimal-control solution — no costate equations, no GPOPS-class solver |
-| 6.8–6.9 | Example launch profiles | **none** |
+| 6.8–6.9 | Example launch profiles | *(n/a)* |
 
-**This is the single largest gap, and the one that would change the most answers.** Everything the tool now
-takes on faith — the loss estimate, the achievability of the orbit, the max-q condition that sizes the
-structure, the staging altitude — comes out of a trajectory. See R5, the biggest item on the roadmap.
+**What is left here is a parking orbit, and then the feedback.** The ascent is one continuous burn straight to the target
+altitude. For the shipped default's lightest split that is 318 m/s short at 400 km; flown to 185 km and raised by a Hohmann
+pair the same vehicle has 117 m/s to spare. A coast and restart would change more verdicts than anything else here. After
+that, the trajectory is still a check after the fact: the vehicle is sized with a loss regression.
 
 ### Chapter 7 — Structures and layout (pp. 407–462)
 
@@ -195,7 +197,10 @@ equation applied to declared burns) plus declared hardware masses, not a book me
 
 ### Chapter 17 — Financial analysis and project management (pp. 975–1022)
 
-**partly done in v0.9** (M84-M85). The five development CERs the chapter prints, with the f-factors, work-year values and inflation, verified against its own Ariane 5 table; cost per flight from Sec. 17.5.3's rule of thumb, because the production submodel, the learning curve and the operations model are all deferred to the chapter's reference. Reusability economics (Sec. 17.7) is not covered.
+**done, apart from reuse.** The five development CERs (M84), with their factors, work-year values and inflation; the
+production, learning and operations relations from Koelle's TRANSCOST handbook, which the chapter defers to (M106-M107); and
+the chapter's rules of thumb and real prices as cross-checks (M85). All of it in work-years first, on a Cost tab.
+`docs/COST_VALIDATION.md` measures it. Reusability economics (Sec. 17.7) is not covered.
 
 ### Coverage summary
 
@@ -213,7 +218,7 @@ areas that have since been delivered.)*
 | Environments | 11 | quasi-static load factors only; the book gives no prediction method for acoustic or shock |
 | Reliability | 15 | k-of-n engine reliability done in v0.15, see R24 |
 | Recovery and reuse | 14.9, 17.7 | **not started**; the book is descriptive here, see R12 |
-| Cost | 17 | development CERs done; no learning curve, no reuse economics |
+| Cost | 17 | development, production with learning and operations done; no reuse economics |
 
 ---
 
@@ -397,7 +402,7 @@ R21 stays parked until asked for.
 ## 4. The GUI: what was built and what should follow
 
 **Built (v0.4):** a dependency-free local web GUI (`python tools/gui.py`, stdlib `http.server`, no CDN, no
-framework, works offline). The left panel is the whole input register — every one of the ~230 annotated inputs,
+framework, works offline). The left panel is the whole input register — every annotated input,
 grouped, searchable, colour-coded by provenance, each showing its units and description, with the source on
 hover. Edit a value and it becomes a visible *override*; the YAML file is never silently modified. The right
 panel has the summary with KPI cards, the Δv budget with each line's book source, the stage table, mass
@@ -412,8 +417,8 @@ line. Nothing is calculated in the browser.
 **Built (v0.18) — the user-experience pass.** Four things that were previously only reachable by editing YAML
 by hand:
 
-* **A launch site library.** `config/launch_sites.yaml`, 28 real sites with sourced coordinates, grouped by
-  region in a dropdown. Choosing one fills the latitude and enforces what a latitude implies: a direct ascent
+* **A launch site library.** `config/launch_sites.yaml`, now 30 sites with sourced coordinates, grouped by
+  continent in a dropdown. Choosing one fills the latitude and enforces what a latitude implies: a direct ascent
   cannot reach an inclination below `|φ|`, so an inclination under that floor is raised to it with a note
   saying so, instead of becoming an infeasibility on pressing *Size*. The library deliberately carries **no
   pad altitudes** (the sources give none) and **no range-safety azimuth corridors** (per-pad, per-vehicle,
@@ -449,21 +454,21 @@ by hand:
 5. **Trajectory plots** once R5 exists: altitude, velocity, dynamic pressure and acceleration against time, with
    the staging events marked.
 
-A desktop packaging (PyInstaller, one executable that opens the browser) is worth doing only once the feature
-set settles; today `python tools/gui.py` is one command.
+Since this list was written: comparison and trade studies are in the GUI (v0.23), each analysis has its own tab and
+chart, the trajectory is plotted, and a Windows app packages the whole thing (v1.0). The live sweep is not built.
 
 ---
 
 ## 5. Known accuracy problems to fix (ahead of new features)
 
-These are measured, documented in `docs/VALIDATION_REPORT.md`, and should be fixed before the tool grows:
+Written at v0.6, kept with what became of each; `docs/ACCURACY.md` has the current measurements:
 
 | # | Problem | Evidence | Fix |
 |---|---|---|---|
-| **A1** | **Solid-motor casing MER is 20–60 % heavy.** Eq. 8:18–8:19 with `k = 0.1154` gives `s = 0.1035`; real filament-wound motors are 0.08–0.09 (Vega P80 0.083, Zefiro 23 0.081, Orion 50S XL 0.091) | every solid stage in the validation set; substituting published ratios moves Vega from +25 % to +5 % | a modern composite-casing option alongside the book's, with its own source; properly, R7 |
+| **A1** | **Solved in v0.26 by `kibbey_medium`.** *Was:* **Solid-motor casing MER is 20–60 % heavy.** Eq. 8:18–8:19 with `k = 0.1154` gives `s = 0.1035`; real filament-wound motors are 0.08–0.09 (Vega P80 0.083, Zefiro 23 0.081, Orion 50S XL 0.091) | every solid stage in the validation set; substituting published ratios moves Vega from +25 % to +5 % | a modern composite-casing option alongside the book's, with its own source; properly, R7 |
 | **A2** | **Avionics MER steps 75 → 350 kg at 1 t payload**, which is heavy for a small launcher and contributes several per cent of GLOM on Electron-class vehicles | small-launcher cases in the validation set | a continuous small-vehicle avionics relation with a cited source |
-| **A3** | *(largely retired in v0.6: `--trajectory` computes the losses instead of fitting them, and the two agree to 3 % on the default design. The regression remains the default inside the sizing loop, because the trajectory needs a converged vehicle to fly.)* **Ascent-loss regressions are fitted to LEO ground launches** and are extrapolated for air launch, high-energy orbits and very small vehicles. The three book fits disagree by 302 m/s on the default case, which is ±6 % on GLOM | `docs/ERRATA_COMPLIANCE.md` §3 | R5: compute the losses instead of fitting them |
-| **A4** | **Pegasus XL is +45 % on GLOM**, the worst case, after the errata's measured 322 m/s drag loss was applied | `docs/VALIDATION_REPORT.md` | partly A1 (three solid stages), partly A3 (air launch is outside the fit) |
+| **A3** | *(largely retired in v0.6: `--trajectory` computes the losses instead of fitting them, and the two agree to a few per cent on the default design's own split but differ by 21 % on its optimised one. The regression remains the default inside the sizing loop, because the trajectory needs a converged vehicle to fly.)* **Ascent-loss regressions are fitted to LEO ground launches** and are extrapolated for air launch, high-energy orbits and very small vehicles. The three book fits disagree by 302 m/s on the default case, which is ±6 % on GLOM | `docs/ERRATA_COMPLIANCE.md` §3 | R5: compute the losses instead of fitting them |
+| **A4** | **Pegasus XL is now −17.6 %.** *Was:* **Pegasus XL is +45 % on GLOM**, the worst case, after the errata's measured 322 m/s drag loss was applied | `docs/VALIDATION_REPORT.md` | partly A1 (three solid stages), partly A3 (air launch is outside the fit) |
 
 ---
 
@@ -471,16 +476,15 @@ These are measured, documented in `docs/VALIDATION_REPORT.md`, and should be fix
 
 1. ~~**R1 + R3** (performance curves and uncertainty bands)~~ — **done in v0.5**.
 2. ~~**R2** (engine database)~~ — **done in v0.5**; ~~**R4**~~ (analytical staging optimum) with it.
-3. **A1 + A2** — fix the known mass errors with cited alternatives before building on top of them. Now the
-   cheapest remaining win, and the uncertainty model from R3 gives the yardstick to judge a fix by.
+3. ~~**A1**~~ — **done in v0.26**. **A2**, the avionics step, is still open.
 4. ~~**R5** (trajectory)~~ — **done in v0.6**, and it retires most of A3: the losses can now be computed for any
    vehicle the gravity turn can fly. **R5b** (trajectory optimisation) is the natural next step, and it is also
    what would let the low-upper-stage-T/W vehicles close.
 5. ~~**R8**~~ (load cases) and ~~**R7**~~ (stress and buckling) — **done in v0.7 and v0.8**. What remains of
    the structural story is the part the book cannot supply: allowables for stiffened shells, and feeding the
    sized thicknesses back into the convergence loop.
-6. **R11 + R12** (cost and reusability) — what makes the tool answer a programme question rather than a physics
-   question.
+6. ~~**R11**~~ (cost) — done, with production and operations. **R12** (reusability) is what is left of the programme
+   questions.
 
 ## 7. What will not be built
 

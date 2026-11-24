@@ -802,10 +802,11 @@ def test_the_drag_model_dropdown_is_never_folded_away_and_only_its_own_inputs_sh
     assert models == {"geometry", "book_titan2", "table", "constant"}
 
 
-def test_the_two_hidden_tabs_are_hidden_and_nothing_else_is():
+def test_the_hidden_tabs_are_hidden_and_nothing_else_is():
     with open(os.path.join(os.path.dirname(webgui.__file__), "gui_static", "index.html"), encoding="utf-8") as fh:
         page = fh.read()
-    assert 'const HIDDEN_TABS = ["architecture", "model"];' in page
+    assert 'const HIDDEN_TABS = ["architecture", "model", "dropzones"];' in page
+    assert page.count("HIDDEN_INPUTS.includes(it.path)") == 2, "the longitude is neither shown nor asked for"
     assert "base = base.filter(t => !HIDDEN_TABS.includes(t[0]));" in page
 
 
@@ -1059,3 +1060,40 @@ def test_table_columns_of_words_sort_alphabetically():
     assert "numeric: true" in page, "Stage 2 goes before Stage 10"
     assert 'const first = words ? "asc" : "desc"' in page
     assert "{txt: t.toLowerCase()}" not in page
+
+
+def test_the_cost_tab_is_offered_only_with_the_cost_analysis_and_recosts_without_resizing():
+    page = _page()
+    assert "function costTab(v, c)" in page and 'cost: ["cost", "Cost", null]' in page
+    assert 'it.path.startsWith("mission.cost.")' in page, "its settings are on the tab, not in the input list"
+    plain = _post("/api/size", {"path": "config/default_design.yaml", "overrides": {}, "studies": []})
+    assert "cost" not in plain["studies"]
+    r = _post("/api/size", {"path": "config/default_design.yaml", "overrides": {}, "studies": ["cost"]})
+    c = r["study_summary"]["cost"]
+    assert c["development_wyr"] > 1000 and c["flight_wyr"] > 10
+    assert sum(e["share"] for e in c["elements"]) == pytest.approx(1.0)
+    c2 = _post("/api/cost", {"token": r["token"], "year": 2006, "inputs": {"launch_rate": 12}})
+    assert c2["flight_wyr"] < c["flight_wyr"] and c2["work_year_usd"] == 246_000
+    assert c2["development_wyr"] == pytest.approx(c["development_wyr"])
+    with urllib.request.urlopen(f"{_server()}/api/report?token={r['token']}", timeout=120) as rep:
+        assert "246,000" in rep.read().decode("utf-8"), "the report follows the settings"
+    for bad in ({"launch_rate": -1}, {"nonsense": 1}):
+        with pytest.raises(urllib.error.HTTPError) as e:
+            _post("/api/cost", {"token": r["token"], "year": 2010, "inputs": bad})
+        assert e.value.code == 400
+
+
+def test_cost_settings_are_saved_with_the_design():
+    import yaml
+    from launch_vehicle.config_io import load_design, _Loader
+    out = webgui.save_design(os.path.join(ROOT, "config", "default_design.yaml"),
+                             {"mission.cost.launch_rate": 9.0, "mission.cost.stage1_engine_existing": True},
+                             "cost settings test", filename="zz_cost_settings_test", replace=True)
+    path = os.path.join(ROOT, out["path"])
+    try:
+        with open(path, encoding="utf-8") as fh:
+            leaf = yaml.load(fh, Loader=_Loader)["mission"]["cost"]["launch_rate"]
+        assert leaf["v"] == 9.0 and leaf["t"] == "user" and leaf["d"] and leaf["u"] == "1/yr"
+        assert load_design(path, webgui.DEFAULT_ASSUMPTIONS).mission["cost"]["stage1_engine_existing"] is True
+    finally:
+        os.remove(path)
