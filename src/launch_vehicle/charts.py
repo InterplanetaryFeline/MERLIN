@@ -130,33 +130,33 @@ def draw_staging_optimum(opt: dict, path_png=None, path_pdf=None, title=""):
     return fig
 
 
-def draw_trajectory(tr, path_png=None, path_pdf=None, title="", required_v_mps=None):
+def draw_trajectory(tr, path_png=None, path_pdf=None, title=""):
     """The ascent: what the vehicle did, and what it cost.
 
     Four panels, because four things decide whether a trajectory is any good: the altitude and speed histories,
     the flight path angle and dynamic pressure (the book's own checklist on p.379), the ground track, and the
-    loss budget that the whole integration exists to produce.
+    loss budget that the whole integration exists to produce. The histories and the track stop at the first cutoff: a
+    coast and a second burn take the better part of an hour and would squash the ascent into the axis. What happens
+    after it is said in the line under the title.
     """
     fig, axes = plt.subplots(2, 2, figsize=(12.6, 8.2))
     (a1, a2), (a3, a4) = axes
-    t = tr.t_s
+    n = max(2, sum(1 for x in tr.t_s if x <= tr.burnout_t_s + 1e-6))
+    t = tr.t_s[:n]
 
-    a1.plot(t, [h / 1e3 for h in tr.h_m], color=ACC, lw=1.7, label="altitude")
+    a1.plot(t, [h / 1e3 for h in tr.h_m[:n]], color=ACC, lw=1.7, label="altitude")
     a1.set_xlabel("time [s]"); a1.set_ylabel("altitude [km]", color=ACC)
     a1.tick_params(axis="y", labelcolor=ACC); a1.grid(alpha=0.3)
     b1 = a1.twinx()
-    b1.plot(t, [v / 1e3 for v in tr.v_mps], color=RED, lw=1.7, label="speed")
+    b1.plot(t, [v / 1e3 for v in tr.v_mps[:n]], color=RED, lw=1.7, label="speed")
     b1.set_ylabel("speed [km/s]", color=RED); b1.tick_params(axis="y", labelcolor=RED)
-    if required_v_mps:
-        b1.axhline(required_v_mps / 1e3, color=RED, ls=":", lw=1.2)
-        b1.text(t[-1], required_v_mps / 1e3, " needed ", color=RED, fontsize=7, ha="right", va="bottom")
-    a1.set_title("Altitude and speed", fontsize=10)
+    a1.set_title("Altitude and speed" + (" to the first cutoff" if n < len(tr.t_s) - 2 else ""), fontsize=10)
 
-    a2.plot(t, tr.gamma_deg, color=GREEN, lw=1.7)
+    a2.plot(t, tr.gamma_deg[:n], color=GREEN, lw=1.7)
     a2.set_xlabel("time [s]"); a2.set_ylabel("flight path angle [deg]", color=GREEN)
     a2.tick_params(axis="y", labelcolor=GREEN); a2.grid(alpha=0.3); a2.axhline(0, color="0.7", lw=0.8)
     b2 = a2.twinx()
-    b2.plot(t, [q / 1e3 for q in tr.q_Pa], color="#8a6d1f", lw=1.5)
+    b2.plot(t, [q / 1e3 for q in tr.q_Pa[:n]], color="#8a6d1f", lw=1.5)
     b2.set_ylabel("dynamic pressure [kPa]", color="#8a6d1f"); b2.tick_params(axis="y", labelcolor="#8a6d1f")
     b2.plot([tr.max_q_t_s], [tr.max_q_Pa / 1e3], marker="o", ms=6, color="#8a6d1f")
     b2.annotate(f"max-q {tr.max_q_Pa/1e3:.0f} kPa, {tr.max_q_t_s:.0f} s, M {tr.max_q_mach:.1f}",
@@ -164,12 +164,12 @@ def draw_trajectory(tr, path_png=None, path_pdf=None, title="", required_v_mps=N
                 color="#8a6d1f")
     a2.set_title("Flight path angle and dynamic pressure", fontsize=10)
 
-    xs_km = [x / 1e3 for x in tr.x_m]
-    hs_km = [h / 1e3 for h in tr.h_m]
+    xs_km = [x / 1e3 for x in tr.x_m[:n]]
+    hs_km = [h / 1e3 for h in tr.h_m[:n]]
     a3.plot(xs_km, hs_km, color=ACC, lw=1.7)
     _label_events(a3, tr, xs_km, hs_km)
     a3.set_xlabel("downrange [km]"); a3.set_ylabel("altitude [km]"); a3.grid(alpha=0.3)
-    a3.set_title(f"Ground track - {tr.downrange_m/1e3:.0f} km downrange at burnout", fontsize=10)
+    a3.set_title(f"Ground track - {tr.downrange_m/1e3:,.0f} km downrange at the first cutoff", fontsize=10)
 
     names = ["gravity", "drag", "propulsion\n(back pressure)", "steering"]
     vals = [tr.gravity_loss_mps, tr.drag_loss_mps, tr.propulsion_loss_mps, tr.steering_loss_mps]
@@ -178,16 +178,19 @@ def draw_trajectory(tr, path_png=None, path_pdf=None, title="", required_v_mps=N
     for b, v in zip(bars, vals[::-1]):
         a4.text(v, b.get_y() + b.get_height() / 2, f" {v:,.0f}", va="center", fontsize=8.5)
     a4.set_xlabel("delta-v lost [m/s]")
-    a4.set_title(f"Losses: {tr.total_loss_mps:,.0f} m/s of a {tr.ideal_dv_mps:,.0f} m/s vacuum ideal",
+    a4.set_title(f"Losses to the first cutoff: {tr.total_loss_mps:,.0f} m/s of a {tr.ideal_dv_mps:,.0f} m/s vacuum ideal",
                  fontsize=10)
     a4.grid(alpha=0.25, axis="x")
+    a4.set_xlim(right=1.14 * max(max(vals), 1.0))
 
-    fig.suptitle(title or f"{tr.vehicle_name} - ascent trajectory", fontsize=11.5)
-    fig.text(0.5, 0.945, f"pitch kick {tr.kick_deg:.3f} deg after a {tr.vertical_rise_s:.0f} s vertical rise; "
-                         f"burnout {tr.burnout_v_mps:,.0f} m/s at {tr.burnout_h_m/1e3:.0f} km, "
-                         f"gamma {tr.burnout_gamma_deg:+.1f} deg, t = {tr.burnout_t_s:.0f} s",
+    fig.suptitle(title or f"{tr.vehicle_name} - ascent trajectory", fontsize=11.5, y=0.985)
+    fig.text(0.5, 0.946, f"first cutoff {tr.burnout_v_mps:,.0f} m/s at {tr.burnout_h_m/1e3:.0f} km, "
+                         f"gamma {tr.burnout_gamma_deg:+.1f} deg, t = {tr.burnout_t_s:.0f} s"
+                         + (f"; second burn of {tr.second_burn_dv_mps:,.0f} m/s ends at "
+                            f"{tr.final_state['t_s'] / 60.0:,.0f} min" if tr.second_burn_dv_mps else "")
+                         + (f"; {tr.margin_mps:+,.0f} m/s of margin at the end" if tr.converged and tr.profile else ""),
              ha="center", fontsize=8, color="0.3")
-    fig.subplots_adjust(top=0.90)
+    fig.subplots_adjust(top=0.885)
     _save(fig, path_png, path_pdf)
     return fig
 
@@ -203,7 +206,8 @@ def _label_events(ax, tr, xs_km, hs_km):
     the left of its marker. Room is then left around the data so nothing is clipped.
     """
     wanted = [e for e in tr.events
-              if "burnout" in e["name"] or "kick" in e["name"] or "fairing" in e["name"]]
+              if any(w in e["name"] for w in ("burnout", "cutoff", "kick", "fairing"))
+              and e["t_s"] <= tr.burnout_t_s + 1e-6]
     if not wanted or not xs_km:
         return
     span_x = max(max(xs_km) - min(xs_km), 1e-6)
@@ -471,7 +475,7 @@ def draw_ascent_optimum(opt: dict, path_png=None, path_pdf=None, title=""):
         ax3.axhline(lim["max_q_alpha_Pa_deg"] / 1e3, color=RED, ls="--", lw=1.0)
     ax2.set_ylabel("dynamic pressure [kPa]", fontsize=9, color=ACC)
     ax3.set_ylabel("q$\\alpha$ [kPa deg]  (dashed = limit)", fontsize=9, color=RED)
-    ax2.set_xlabel("altitude at which the gravity turn hands over to commanded steering [km]")
+    ax2.set_xlabel("altitude at which the gravity turn hands over to linear tangent steering [km]")
     ax2.grid(alpha=0.3)
     best = opt.get("best")
     if best:

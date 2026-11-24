@@ -20,6 +20,7 @@ import math
 from . import delta_v as dvmod, staging, propulsion as prop, tank_sizing as ts, geometry as geo, mass_budget as mb
 from . import solid_motor as sm, boosters as bst
 from .units import EARTH_MODELS, G0
+from .atmosphere import P0_PA
 from .models import StageResult, VehicleResult
 from .validation import validate_spec, check_result, Issue
 
@@ -37,6 +38,7 @@ from .validation import validate_spec, check_result, Issue
 SEED_S = 0.10
 SEED_DRY_FACTOR = 0.8
 SEED_LOADED_FACTOR = 1.03
+SEED_LOSS_MPS = 1400.0    # first-pass ascent loss when the losses are simulated (path only)
 
 
 class SizingError(RuntimeError):
@@ -124,13 +126,17 @@ def _thrust_block(st, pre_kg, isp_ref_s, boost_mass_kg, boost_thrust_ref_N, mp_k
 
 
 def _stage_pass(spec, st, dv, U, dry_prev, wiring_kg, avionics_kg, next_stage, next_env,
-                groups=None, boost_mass=0.0, boost_thrust_ref=0.0):
+                groups=None, boost_mass=0.0, boost_thrust_ref=0.0, isp_sl_derived=None):
     p = st.prop_system
     isp_eff = prop.effective_isp(p.isp_vac_s, p.isp_sl_s, p.isp_mode, p.isp_weight_sl, p.isp_user_s)
     mu = staging.mass_ratio_from_dv(dv, isp_eff)
     f_un = st.residual_fraction + st.loading_margin_fraction
-    use_sl = (st.index == 1 and p.isp_sl_s is not None)
-    isp_ref = p.isp_sl_s if use_sl else p.isp_vac_s
+    # A first stage with no sea-level Isp still lifts off at sea level: its thrust there follows from the vacuum
+    # thrust and the nozzle exit area (book Eq. 6:52), carried from one pass of the sizing loop to the next. Taking
+    # the vacuum thrust instead reported a lift-off T/W the vehicle did not have.
+    isp_sl = p.isp_sl_s if p.isp_sl_s is not None else isp_sl_derived
+    use_sl = (st.index == 1 and isp_sl is not None)
+    isp_ref = isp_sl if use_sl else p.isp_vac_s
     cond = "sea_level" if use_sl else "vacuum"
     phases = []
 
@@ -167,9 +173,13 @@ def _stage_pass(spec, st, dv, U, dry_prev, wiring_kg, avionics_kg, next_stage, n
     pre = U + dry + mp + res_p + mar_p
     mdot, startup, M0, T_ref = _thrust_block(st, pre, isp_ref, boost_mass, boost_thrust_ref, mp)
     F_vac = mdot * G0 * p.isp_vac_s
-    F_sl = mdot * G0 * p.isp_sl_s if p.isp_sl_s else None
+    F_sl = mdot * G0 * isp_sl if isp_sl else None
     loaded = mp + res_p + mar_p + startup
     env = prop.envelope(st, F_vac / (1 if st.is_solid else p.n_engines))
+    isp_sl_next = None
+    if st.index == 1 and p.isp_sl_s is None and not spec.mission.get("air_launch"):
+        back = env.n * 0.25 * math.pi * env.exit_diameter_m ** 2 * P0_PA
+        isp_sl_next = max(p.isp_vac_s - back / (mdot * G0), 0.1 * p.isp_vac_s)
     if st.is_solid:
         tanks = sm.size_solid_stage(st, loaded, spec.solid_propellants)
     else:
@@ -192,11 +202,15 @@ def _stage_pass(spec, st, dv, U, dry_prev, wiring_kg, avionics_kg, next_stage, n
     ox_fuel = (0.0, 0.0) if st.is_solid else ts.split_propellant(loaded, st.of_ratio)
     return dict(isp_eff=isp_eff, mu=mu, mp=mp, res=res_p, mar=mar_p, startup=startup, loaded=loaded, dry=dry,
                 dry_new=dry_new, M0=M0, T_ref=T_ref, cond=cond, mdot=mdot, F_vac=F_vac, F_sl=F_sl, tanks=tanks,
-                layout=layout, len=stage_len, comps=comps, eng_each=eng_each, ox_fuel=ox_fuel, env=env, phases=phases)
+                layout=layout, len=stage_len, comps=comps, eng_each=eng_each, ox_fuel=ox_fuel, env=env, phases=phases,
+                isp_sl_next=isp_sl_next)
 
 
 def size_vehicle(spec, keep_history: bool = True) -> VehicleResult:
     warns = validate_spec(spec)
+    if spec.mission.get("loss_model") == "simulated" and spec.mission.get("simulated_loss_mps") is None:
+        from . import simulated_loss
+        return simulated_loss.size(spec, keep_history)
     earth = EARTH_MODELS[spec.earth_model]
     mission = spec.mission
     N = len(spec.stages)
@@ -208,8 +222,8 @@ def size_vehicle(spec, keep_history: bool = True) -> VehicleResult:
     boost_mass = bres.m_total_kg if bres else 0.0
     boost_T_sl = (bres.n_ground_lit * (bres.thrust_sl_each_N or bres.thrust_vac_each_N)) if bres else 0.0
 
-    def make_budget(ascent):
-        bd = dvmod.build_budget(earth, mission, ascent)
+    def make_budget(ascent, m=mission):
+        bd = dvmod.build_budget(earth, m, ascent)
         if mission.get("dv_override_mps") is not None:
             ov = mission["dv_override_mps"]
             bd.lines = [dvmod.BudgetLine("USER OVERRIDE of total launch-vehicle delta-v (budget bypassed)", ov, "ideal", "User override")]
@@ -224,7 +238,12 @@ def size_vehicle(spec, keep_history: bool = True) -> VehicleResult:
     tw0 = getattr(p0, "tw_ignition", None) or 1.3
     ascent = dict(t_ascent_s=450.0 + 3.0 * (N - 1), accel0_mps2=tw0 * G0,
                   isp_s=sum(isp_of(st) for st in spec.stages) / N)
-    budget = make_budget(ascent)
+    # The seed is cruder than the vehicle (a tenth of every stage is structure) and refuses a split the sized vehicle
+    # can carry, so a fixed loss starts low and is charged in full from the second pass on, as the regression is.
+    seed = mission
+    if mission.get("loss_model") == "simulated":
+        seed = dict(mission, simulated_loss_mps=min(mission["simulated_loss_mps"], SEED_LOSS_MPS))
+    budget = make_budget(ascent, seed)
     dv_req = budget.total_mps
     dvs = staging.allocate_dv(dv_req, N, spec.dv_mode, spec.dv_fractions, spec.dv_fixed)
     geo.check_fairing_fit(spec)
@@ -298,6 +317,7 @@ def size_vehicle(spec, keep_history: bool = True) -> VehicleResult:
     # WITHOUT this tolerance after the loop, so a genuinely unbuildable tank still fails with the same
     # message and the same one-click fixes. Entered as a plain guard rather than a `with` block so that the
     # loop body below keeps its indentation and stays reviewable against earlier versions.
+    isp_sl_first = None                 # stage 1's sea-level Isp, derived when the design gives none
     _tank_tol = ts.tolerate_oversized_tanks()
     _tank_tol.__enter__()
     try:
@@ -320,7 +340,9 @@ def size_vehicle(spec, keep_history: bool = True) -> VehicleResult:
                 use_b = spec.boosters is not None and spec.boosters.attach_stage == st.index
                 p = _stage_pass(spec, st, dvs[j], U, dry[j], wiring, avi[st.index], nxt, envs.get(j + 2),
                                 groups_all if use_b else None, boost_mass if use_b else 0.0,
-                                boost_T_sl if use_b else 0.0)
+                                boost_T_sl if use_b else 0.0, isp_sl_first if st.index == 1 else None)
+                if st.index == 1 and p["isp_sl_next"] is not None:
+                    isp_sl_first = p["isp_sl_next"]
                 passes[j] = (p, U)
                 envs[st.index] = p["env"]
                 new_dry[j] = dry[j] + cv.relax * (p["dry_new"] - dry[j]) if st.structure_mode == "bottom_up" else p["dry"]

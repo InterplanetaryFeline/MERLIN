@@ -151,6 +151,8 @@ def assess(res, traj, cp_rows: list, delta_max_deg: float = 5.0, gimballed_fract
         k = min(range(len(traj.t_s)), key=lambda i: abs(traj.t_s[i] - row["t_s"]))
         alpha = gust_alpha_rad(traj.v_mps[k], traj.h_m[k])
         thrust = traj.thrust_N[k] if traj.thrust_N else 0.0
+        if traj.thrust_N and thrust <= 0.0:
+            continue                          # a coast between stages: no gimbal to steer with, and the check is of one
         try:
             items, _n, _s, _b = _items_at(res, traj, k)
         except Exception:                                        # noqa: BLE001

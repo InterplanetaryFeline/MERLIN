@@ -121,6 +121,9 @@ def monte_carlo(design_path: str, assumptions_path: str, n: int = 200, seed: int
     """
     nominal_spec = load_design(design_path, assumptions_path, overrides)
     nominal = size_vehicle(nominal_spec)
+    # losses flown for every sample would take a quarter of an hour; they hardly move with the masses, so the nominal's
+    # are held
+    held = nominal.budget.subtotal("loss") if nominal_spec.mission.get("loss_model") == "simulated" else None
     sig = _scatter(nominal_spec)
     if not sig:
         raise UncertaintyError("no mer_scatter block in the assumptions file: nothing to sample")
@@ -135,7 +138,7 @@ def monte_carlo(design_path: str, assumptions_path: str, n: int = 200, seed: int
         ov = dict(overrides or {})
         ov.update(_overrides(nominal_spec, draws))
         try:
-            r = size_vehicle(load_design(design_path, assumptions_path, ov))
+            r = size_vehicle(_held(load_design(design_path, assumptions_path, ov), held))
             if not r.converged:
                 raise SizingError(r.status)
             glom.append(r.glom_kg)
@@ -162,7 +165,7 @@ def monte_carlo(design_path: str, assumptions_path: str, n: int = 200, seed: int
                 p05=qs[0], p50=qs[1], p95=qs[2],
                 dry_p05=_quantiles(dry)[0], dry_p50=_quantiles(dry)[1], dry_p95=_quantiles(dry)[2],
                 sigma=dict(sig), seed=seed,
-                sensitivity=one_at_a_time(design_path, assumptions_path, nominal_spec, nominal, sig, overrides),
+                sensitivity=one_at_a_time(design_path, assumptions_path, nominal_spec, nominal, sig, overrides, held),
                 note="Log-normal multipliers on each MER group; sigmas are assumptions, see "
                      "config/engineering_assumptions.yaml -> mer_scatter")
 
@@ -178,7 +181,13 @@ def _quantiles(xs):
     return q(0.05), q(0.50), q(0.95)
 
 
-def one_at_a_time(design_path, assumptions_path, spec, nominal, sig: dict, overrides=None) -> list:
+def _held(spec, loss_mps):
+    if loss_mps is not None:
+        spec.mission["simulated_loss_mps"] = loss_mps
+    return spec
+
+
+def one_at_a_time(design_path, assumptions_path, spec, nominal, sig: dict, overrides=None, held=None) -> list:
     """Move each group by +1 sigma on its own and record what GLOM does - the tornado behind the histogram."""
     out = []
     for group, s in sig.items():
@@ -189,7 +198,7 @@ def one_at_a_time(design_path, assumptions_path, spec, nominal, sig: dict, overr
         if not ov:
             continue
         try:
-            r = size_vehicle(load_design(design_path, assumptions_path, ov))
+            r = size_vehicle(_held(load_design(design_path, assumptions_path, ov), held))
             d = (r.glom_kg - nominal.glom_kg) / nominal.glom_kg if r.converged else float("nan")
         except (SizingError, InputError, ValueError):
             d = float("nan")

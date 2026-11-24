@@ -46,6 +46,7 @@ STATIC_CHOICES: dict = {
                            ("GEO_DIRECT", "Geostationary, direct"), ("CUSTOM", "Custom (use the fields below)")],
     "mission.losses.model": [("book_penalty", "Book regression (Eq. 3:36-3:38)"),
                              ("book_k1k2", "Book k1/k2 form"), ("book_simple", "Book simple form"),
+                             ("simulated", "From this vehicle's own simulated flight (slower)"),
                              ("user", "My own loss estimates")],
     "vehicle.dv_allocation_mode": [("fractions", "Split by fraction of total"),
                                    ("fixed", "Fixed delta-v per stage")],
@@ -87,6 +88,9 @@ STATIC_CHOICES: dict = {
     # the two trajectory-model choices, whose options the design file's own description lists
     "mission.atmosphere_model": [("book_exponential", "Book exponential (Eqs. 6:50/6:53)"),
                                  ("us76", "US 1976 standard atmosphere")],
+    "mission.ascent_profile": [("auto", "Automatic (straight in up to 200 km, otherwise raise the orbit)"),
+                               ("direct", "Straight in, one burn"),
+                               ("parking", "Low first, then a second burn")],
     "mission.aerodynamics.drag_model": [("geometry", "From this vehicle's geometry (varies with Mach)"),
                                         ("book_titan2", "Book Titan II curve (varies with Mach, Fig. 6.13)"),
                                         ("table", "Your own table of Cd against Mach"),
@@ -400,6 +404,7 @@ LEAF_LABELS: dict = {
     "design_margin_fraction": "Delta-v margin (fraction of the total)", "model": "Ascent loss method",
     "pad_height_m": "Pad height above ground", "profile": "Wind profile",
     "atmosphere_model": "Atmosphere model", "vertical_rise_s": "Vertical rise before the pitch kick",
+    "ascent_profile": "Way to orbit", "parking_altitude_m": "Altitude of the first insertion",
     "last_ascent_stage": "Last stage flown in the ascent (blank = all)", "drag_model": "Drag model",
     "constant_cd": "Fixed drag coefficient",
     "mach_table": "Mach numbers of your drag table", "cd_table": "Cd at each of those Mach numbers",
@@ -600,7 +605,7 @@ _SHAPE_TOPIC = "What kind of stage"
 _MISSION_TOPICS = (("orbit.", "Orbit"), ("launch_site.", "Launch site"), ("losses.", "Ascent losses"),
                    ("wind.", "Winds aloft"), ("aerodynamics.", "Trajectory model"))
 #: mission fields that describe how the ascent is flown rather than what the mission is
-_TRAJECTORY_KEYS = ("atmosphere_model", "vertical_rise_s", "last_ascent_stage",
+_TRAJECTORY_KEYS = ("atmosphere_model", "vertical_rise_s", "ascent_profile", "parking_altitude_m", "last_ascent_stage",
                     "max_dynamic_pressure_Pa", "max_q_alpha_Pa_deg")
 _STAGE_MASS_KEYS = ("feed_system_mass_per_engine_kg", "pressurant_mass_fraction_of_propellant",
                     "separation_hardware_mass_kg", "other_equipment_mass_kg", "structure_mass_factor",

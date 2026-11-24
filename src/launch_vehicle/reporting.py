@@ -611,18 +611,18 @@ def write_workbook(res, path, figures: dict | None = None, sens_rows=None, comp_
     if ascent_opt and ascent_opt.get("ok"):
         ws = wb.create_sheet("Ascent_Optimum")
         _title(ws, "Ascent pitch-programme optimisation (book Sec. 6.7)",
-               "Objective: burnout speed. The pitch kick is solved by shooting inside every evaluation, so every "
-               "row below reaches the target altitude. The optimum sits on a constraint, not at a stationary point.")
-        cols = [("Hand-over altitude [km]", "h", "0.0", None), ("alpha allowed [deg]", "a", "0.00", None),
+               "Objective: the speed in hand at the end of the flight. The steering is solved and the pitch kick searched "
+               "inside every evaluation, with the vehicle's limits enforced.")
+        cols = [("Hand-over altitude [km]", "h", "0.0", None), ("largest alpha [deg]", "a", "0.00", None),
                 ("Vertical rise [s]", "vr", "0.0", None), ("Kick [deg]", "k", "0.0000", None),
-                ("Burnout speed [m/s]", "v", "#,##0.0", None), ("Total losses [m/s]", "L", "#,##0", None),
+                ("Speed in hand [m/s]", "v", "#,##0.0", None), ("Total losses [m/s]", "L", "#,##0", None),
                 ("Gravity [m/s]", "lg", "#,##0", None), ("Drag [m/s]", "ld", "#,##0", None),
                 ("Steering [m/s]", "ls", "#,##0", None), ("max-q [kPa]", "q", "0.0", None),
                 ("max q.alpha [kPa deg]", "qa", "#,##0", None), ("max axial [g]", "g", "0.00", None)]
 
         def row(c):
             return dict(h=c["handover_h_m"] / 1e3, a=c["max_alpha_deg"], vr=c["vertical_rise_s"],
-                        k=c["kick_deg"], v=c["burnout_v_mps"], L=c["total_loss_mps"],
+                        k=c["kick_deg"], v=c["margin_mps"], L=c["total_loss_mps"],
                         lg=c["gravity_loss_mps"], ld=c["drag_loss_mps"], ls=c["steering_loss_mps"],
                         q=c["max_q_Pa"] / 1e3, qa=c["max_q_alpha_Pa_deg"] / 1e3, g=c["max_accel_g"])
 
@@ -637,7 +637,7 @@ def write_workbook(res, path, figures: dict | None = None, sens_rows=None, comp_
                      ("axial acceleration limit [g]", lim.get("max_axial_g")),
                      ("burnout flight path angle window [deg]", lim.get("max_gamma_burnout_deg")),
                      ("binding constraint", (ascent_opt.get("binding") or {}).get("detail")),
-                     ("burnout speed gain [m/s]", ascent_opt.get("speed_gain_mps")),
+                     ("gain in speed in hand [m/s]", ascent_opt.get("speed_gain_mps")),
                      ("payload gain [kg]", ascent_opt.get("payload_gain_kg")),
                      ("trajectories flown in the search", ascent_opt.get("evaluations"))):
             ws.cell(row=r, column=1, value=k).font = Font(name=FONT, size=10)

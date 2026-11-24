@@ -101,7 +101,7 @@ def _classify(name: str) -> str:
         return "liftoff"
     if "max-q" in n or "max q" in n:
         return "max_q"
-    if "burnout" in n:
+    if "burnout" in n or "cutoff" in n:
         return "burnout"
     if "jettison" in n or "separation" in n or "start" in n:
         return "separation"
@@ -136,7 +136,7 @@ def build(res, traj=None, load_cases: dict | None = None,
         taken = []
         for ev in sorted(events, key=lambda e: e["t_s"]):
             name = ev["name"]
-            if "pitch kick" in name.lower():
+            if "pitch kick" in name.lower() or "steering" in name.lower():
                 continue                                      # a guidance event, not one the payload feels
             k = min(range(len(traj.t_s)), key=lambda i: abs(traj.t_s[i] - ev["t_s"]))
             kind = _classify(name)

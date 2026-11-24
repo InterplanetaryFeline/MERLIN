@@ -85,7 +85,12 @@ def load_yaml_annotated(path, reg=None, extra=None):
 #: Optional inputs a design file may leave out altogether, which the GUI still offers a field for. Setting
 #: one creates it; any other unknown path is still refused, so a mistyped name cannot pass as a new input.
 CREATABLE_LEAVES = {("engine", "cstar_mps"): dict(u="m/s", d="Delivered characteristic velocity c*, read only when "
-                                                             "the engine dimensions come from the book relations")}
+                                                             "the engine dimensions come from the book relations"),
+                    ("mission", "ascent_profile"): dict(u="-", d="How the vehicle goes to orbit in the simulated ascent: "
+                                                        "auto (straight in up to 200 km, book p.373; above that, insertion "
+                                                        "low and a second burn at the top), direct, or parking"),
+                    ("mission", "parking_altitude_m"): dict(u="m", d="Altitude of the first insertion when the simulated "
+                                                            "ascent raises its orbit afterwards")}
 
 
 def creatable_meta(keys) -> dict | None:
@@ -274,6 +279,7 @@ def build_spec(design: dict, assump: dict, reg: list | None = None, name: str = 
         atmosphere_model=m.get("atmosphere_model"),
         vertical_rise_s=m.get("vertical_rise_s"),
         last_ascent_stage=m.get("last_ascent_stage"),
+        ascent_profile=m.get("ascent_profile"), parking_altitude_m=m.get("parking_altitude_m"),
         # the Chapter 9 load cases read this; optional, defaults to a vehicle standing on the ground
         pad_height_m=m.get("pad_height_m"), wind=m.get("wind"),
         # Chapter 17 cost model

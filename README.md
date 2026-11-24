@@ -54,14 +54,15 @@ python -m launch_vehicle.main family --help
 * **Sizing:** serial liquid and solid stages and strap-on boosters, with the number of stages and boosters as
   inputs; tank and motor-case geometry; engine and nozzle dimensions; mass ledger, centre of mass and moments of
   inertia at every flight event.
-* **Mission:** LEO, SSO, GTO and GEO delta-v budgets, 30 launch sites, and ascent losses from the book's methods.
+* **Mission:** LEO, SSO, GTO and GEO delta-v budgets, 30 launch sites, and ascent losses from the book's methods
+  or the vehicle's own simulated flight.
 * **Libraries:** real engines and motors, propellants, propellant combinations and tank materials, and your own
   entries beside them.
 * **Trades:** optimum staging by lift-off mass, cost or payload; payload curves for other orbits; trade studies
   and side-by-side comparison; from the command line, launcher families, pinning a vehicle's stages to change its
   strap-on count, or re-sizing the core for a fixed booster set.
-* **Analysis:** 3-DoF ascent trajectory and its optimisation, with the drag coefficient built up from the vehicle's
-  own geometry; ground and flight loads with your own winds-aloft
+* **Analysis:** 3-DoF ascent to orbit (linear tangent steering, engine cutoff, coast and restart, solids, air launch, on a
+  turning Earth) and its optimisation, with the drag coefficient built up from the vehicle's own geometry; ground and flight loads with your own winds-aloft
   profile; shell stress and buckling; aerodynamics and stability; solid internal ballistics; payload environments;
   development, production and per-flight cost in work-years and dollars; reliability; Monte-Carlo uncertainty.
 * **Outputs:** a self-contained design report, an Excel workbook with live cross-check formulas, dimensioned
@@ -73,10 +74,9 @@ python -m launch_vehicle.main family --help
   not re-sized around the better ascent the optimiser finds, and no motor casing is re-sized for the chamber
   pressure its own grain reaches.
 * **Reusable vehicles** cannot be represented, and there is no reuse economics.
-* **The lightest vehicle may not reach orbit in its own Trajectory tab.** The ascent is simulated as one continuous burn
-  straight to the target altitude, with no parking orbit, which costs a high orbit and a small first stage far more than
-  the regression the vehicle is sized with. The shipped default, with its optimised split, is an example: the direct climb
-  to 400 km falls short, and flown to 185 km and raised it would not.
+* **The lightest vehicle may not be one that flies well.** With the book's loss methods the search for the best stage split
+  does not see the ascent. The Trajectory tab says whether the orbit is reached, and an optional loss method sizes the vehicle
+  with the losses of its own simulated flight (`docs/ASCENT.md`).
 * **Shared-core families are biased.** The sizer never carries a core oversized for the mission being flown, so
   a family's smaller variants come out too light when sized alone, and over-predict payload when the core is
   pinned. This is measured in `docs/ACCURACY.md` section 6b, and is not corrected.
@@ -84,7 +84,7 @@ python -m launch_vehicle.main family --help
   interference or plume effects, and it depends on the nose length, which most designs carry as an assumption.
   `docs/DRAG.md` has the measured error.
 * **Not modelled:** propellant crossfeed, more than one booster set or boosters on a stage other than the first,
-  throttling profiles, dog-leg ascents and plane changes, boil-off and chill-down mass, products of inertia, and
+  engine shutdowns in flight, dog-leg ascents and plane changes, boil-off and chill-down mass, products of inertia, and
   acoustic or shock prediction. A motor below about one tonne of propellant is badly served by every mass
   relation here.
 * **Out of scope:** six-degree-of-freedom simulation, finite elements, CFD and flight software.

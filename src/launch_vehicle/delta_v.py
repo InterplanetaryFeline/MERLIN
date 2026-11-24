@@ -209,6 +209,13 @@ def build_budget(earth: EarthModel, m: dict, ascent: dict | None = None) -> Delt
             b.lines.append(BudgetLine(f"   indicative {nm} share of lumped losses (Table 3.2 proportions)", bp["penalty"] * v / tot, "info",
                                       "Informational split only - NOT added to the total (already inside the lumped penalty)", in_total=False))
         b.lines.append(BudgetLine("Other allowances (reserves, extra)", m["other_allowance_mps"] or 0.0, "allowance", "User-defined"))
+    elif model == "simulated":
+        if m.get("simulated_loss_mps") is None:
+            raise ValueError("loss model 'simulated' needs the flown losses, which the sizing loop supplies")
+        b.lines.append(BudgetLine("Ascent losses of the simulated flight (gravity, drag, steering, back pressure, coast "
+                                  "and second burn)", m["simulated_loss_mps"], "loss",
+                                  "SUPPLEMENTARY: the ideal speed the flown ascent took to the orbit, less the lines above"))
+        b.lines.append(BudgetLine("Other allowances (reserves, extra)", m["other_allowance_mps"] or 0.0, "allowance", "User-defined"))
     elif model == "user":
         for key, label, src in (
             ("gravity_loss_mps", "Gravity loss (estimate)", "User-defined; typical Table 3.4 range 1,150-1,534 m/s (p.180)"),
@@ -220,7 +227,7 @@ def build_budget(earth: EarthModel, m: dict, ascent: dict | None = None) -> Delt
                 raise ValueError(f"loss model 'user' needs mission.losses.{key}")
             b.lines.append(BudgetLine(label, m[key], "allowance" if key == "other_allowance_mps" else "loss", src))
     else:
-        raise ValueError(f"unknown loss model '{model}' (use 'book_penalty', 'book_k1k2', 'book_simple' or 'user')")
+        raise ValueError(f"unknown loss model '{model}' (use 'book_penalty', 'book_k1k2', 'book_simple', 'simulated' or 'user')")
 
     base = b.total_mps
     marg = m["design_margin_fraction"] * base

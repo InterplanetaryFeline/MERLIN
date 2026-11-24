@@ -67,17 +67,12 @@ def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, appli
             print("  ascent trajectory ...", flush=True)
         try:
             drag = aerodynamics.model_from_config(spec.mission.get("aerodynamics"), root=os.path.dirname(design))
-            tr = trajectory_mod.fly_design(res, drag=drag,
-                                           atmosphere=(spec.mission.get("atmosphere_model")
-                                                       or "book_exponential"),
-                                           vertical_rise_s=float(spec.mission.get("vertical_rise_s") or 10.0),
-                                           last_ascent_stage=spec.mission.get("last_ascent_stage"))
+            tr = trajectory_mod.fly_design(res, drag=drag, **trajectory_mod.flight_options(spec))
             extras["trajectory"] = tr
             if tr.attempted:
                 figs["trajectory_png"] = os.path.join(outdir, "trajectory.png")
                 charts.draw_trajectory(tr, figs["trajectory_png"], None,
-                                       title=f"{spec.name} - ascent trajectory",
-                                       required_v_mps=res.budget.info.get("v_needed_mps"))
+                                       title=f"{spec.name} - ascent trajectory")
             elif verbose:
                 # No chart at all, rather than four empty axes that read as a vehicle which never moved
                 print(f"    ascent not attempted: {tr.status.split('.')[0]}", flush=True)
@@ -106,8 +101,7 @@ def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, appli
                           file=sys.stderr)
             if verbose:
                 if tr.converged:
-                    print(f"    burnout {tr.burnout_v_mps:,.0f} m/s at {tr.burnout_h_m/1e3:.0f} km "
-                          f"(needed {res.budget.info.get('v_needed_mps', 0):,.0f} m/s); losses "
+                    print(f"    {(tr.insertion or {}).get('headline') or ''} {tr.margin_mps:+,.0f} m/s of margin; losses "
                           f"gravity {tr.gravity_loss_mps:,.0f}, drag {tr.drag_loss_mps:,.0f}, "
                           f"propulsion {tr.propulsion_loss_mps:,.0f}, steering {tr.steering_loss_mps:,.0f} m/s")
                 else:
@@ -120,10 +114,7 @@ def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, appli
         try:
             drag = aerodynamics.model_from_config(spec.mission.get("aerodynamics"), root=os.path.dirname(design))
             opt = ascent_opt_mod.optimise_and_price(
-                res, drag=drag, atmosphere=(spec.mission.get("atmosphere_model") or "book_exponential"),
-                limits=ascent_opt_mod.limits_from_spec(spec),
-                vertical_rise_s=float(spec.mission.get("vertical_rise_s") or 10.0),
-                last_ascent_stage=spec.mission.get("last_ascent_stage"))
+                res, drag=drag, limits=ascent_opt_mod.limits_from_spec(spec), **trajectory_mod.flight_options(spec))
             extras["ascent_optimum"] = opt
             if opt.get("sweep"):
                 figs["ascent_opt_png"] = os.path.join(outdir, "ascent_optimum.png")
@@ -131,7 +122,7 @@ def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, appli
                                            title=f"{spec.name} - ascent pitch-programme trade")
             if verbose:
                 if opt.get("ok"):
-                    print(f"    {opt['speed_gain_mps']:+,.0f} m/s of burnout speed"
+                    print(f"    {opt['speed_gain_mps']:+,.0f} m/s of margin"
                           + (f", {opt['payload_gain_kg']:+,.0f} kg of payload"
                              if opt.get("payload_gain_kg") is not None else "")
                           + f"; stopped by: {opt.get('binding', {}).get('name', '?')}")

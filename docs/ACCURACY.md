@@ -644,63 +644,15 @@ From the roadmap, ordered by measured payoff rather than by effort:
   converged GLOM is **identical to ~1e-8 relative**, i.e. to the convergence tolerance. Pinned as a test.
   Prompted by Balesdent (2011) App. B, which found a comparable iteration landing on *different* optima
   from different seeds; ours does not. See [`OPTIMISATION.md`](OPTIMISATION.md) §6.
-* **Of the 18 check vehicles, 11 fly, 1 is not attempted and 6 fail**, and the reason is not what an earlier
-  revision of this document said. It claimed the single-shooting pitch programme "will not reach a GTO
-  insertion for a vehicle with strap-ons". That is false, and was inferred from three failures without
-  checking the boosted vehicles that succeed: **Soyuz 2.1b flies with four strap-ons** (burnout 202 km,
-  γ = −1.3°) and **H-IIA 202 with two** (298 km, γ = −8.2°), while **Scout G-1 and Vega have no strap-ons at
-  all and fail**. Ariane 5 ECA is now the one *not attempted*, because it is a GTO mission (see the gating note below). The six
-  that are attempted and fail are Atlas V 551, Delta IV Heavy, Delta II 7920, Pegasus XL, Scout G-1 and Vega.
-  Measured outcomes, taken before the v0.26 mass change (which lightened the solid vehicles and moved Epsilon
-  and M-V into the flown group):
-
-  | design | strap-ons | target | last burn | outcome |
-  |---|---|---|---|---|
-  | Soyuz 2.1b | 4 | 200 km | 140 s | flown, γ = −1.3° |
-  | H-IIA 202 | 2 | 300 km | 518 s | flown, γ = −8.2° |
-  | Ariane 5 ECA | 2 | 250 km | **1,892 s** | peak 202 km, never reaches target |
-  | Atlas V 551 | 5 | 200 km | **1,595 s** | no kick completes an ascent, γ = −18° |
-  | Delta IV Heavy | 2 | 400 km | **1,299 s** | peak 9 km |
-  | Delta II 7920 | 9 | 185 km | 709 s | lofts to 668 km, re-crosses at γ = −34° |
-  | Vega | 0 | 700 km | **736 s** @ 2 kN | crosses at γ = +10.8° |
-  | Scout G1 | 0 | 555 km | 27 s (185 s total) | crosses at γ = +50.6° |
-  | Pegasus XL | 0 | 200 km | — | air-launched; no air-launch model |
-
-  The discriminator is the **burn structure**, not the strap-ons. Every failure except Scout and Pegasus has
-  a final burn of 700–1,900 s, because the model burns each stage continuously from ignition to propellant
-  exhaustion. The real vehicles do not: a GTO mission burns to a parking orbit, **coasts**, and reignites.
-  Two consequences follow. The vehicle reaches orbital speed long before its propellant is gone and keeps
-  thrusting; and `_steering_alpha` spreads the commanded pitch change over `t_total - t`, the whole remaining
-  burn, so with 1,500 s remaining the terminal guidance barely steers at all. Scout and Vega fail at the
-  other end — short solid stages flying a genuinely lofted profile the 3 s inter-stage coast cannot represent.
-
-  This does **not** affect the GLOM errors in §1: `convergence.py`, `mass_budget.py` and `delta_v.py` do not
-  import `trajectory` at all, and the sizing loop takes its ascent losses from the book regression
-  (Eq. 3:32–3:38). What it does mean is that for those vehicles there is no flown-ascent cross-check and no
-  stability or control assessment, because both need a converged trajectory. The GUI says so on the
-  Trajectory tab instead of presenting the failed attempt as a result.
-
-* **A GTO or GEO mission is no longer flown at all** (`trajectory.UNFLOWN_ORBIT_TYPES`), and the result
-  carries `attempted = False`, kept deliberately distinct from `converged = False`. A failed attempt is a
-  finding about the vehicle; an unattempted one is a statement about the model, and the two look identical in
-  a chart. The published sequences this rests on: Atlas V 551 (ULA MUOS-1 and MUOS-5 booklets) burns Centaur
-  for 461 s, coasts 508 s, burns 361 s, coasts 9,000 s, burns 54 s — two restarts; Delta IV Heavy (ULA
-  DSP-23) 422 s / 3,751 s / 396 s / 17,297 s / 181 s through a 117 × 851 nmi parking orbit; Delta IV M+(4,2)
-  to GTO 517 s / 620 s / 299 s through 185 × 595 km; Vega's AVUM is certified for up to five restarts and
-  VV01 flew three burns. **Ariane 5 ECA is the exception that locates the cause in the profile and not the
-  orbit**: the Arianespace user manual gives its ESC-A a 945 s nominal single burn, direct ascent, no
-  restart capability, and ESA's V187 timeline measures 932 s. Its ascent failed because the tool gives that
-  stage 29,730 kg of propellant against a real 14,900 kg, a 1,892 s burn against 945 s — a Δv-split defect
-  surfacing in the trajectory module, not a guidance one.
-
-  Source caveat, which matters because this project does not accept unverified references: every figure in
-  that paragraph was read through a text summarizer, because the workspace's egress proxy blocks direct PDF
-  download from `ulalaunch.com` and the other hosts. The summarizer mis-aligned columns on its first pass
-  over one ULA booklet and had to be re-fetched. MUOS-1/MUOS-5 and DSP-23/EFT-1 cross-validate each other
-  structurally, which is why they are quoted. **Treat the individual times as provisional** until re-read
-  from the PDFs directly; the restart *structure* is corroborated by the vehicles' user guides in text
-  ("The standard Delta IV GTO mission profile uses two burns of the second stage", and the Atlas V guide's
-  section headings for two- and three-burn Centaur ascents).
+* **Of the 24 check vehicles as this tool sizes them, 12 reach their orbit in the simulated ascent, 4 are in orbit but short,
+  3 fall short of orbit and 5 have no ascent at all.** Until v1.3 it was 2, 4, 9 and 7, with 2 not attempted: the model burned
+  every stage continuously, straight to the target altitude, on a gravity turn. What is left is the vehicles and not the
+  flight: Delta II, Atlas V 551, Ariane 64, Ariane 5 ECA and Delta IV Heavy are sized with second stages that burn for 12 to 30
+  minutes at a thrust-to-weight of 0.16 to 0.27, which is the Δv-split defect of §6. The first four of those that have
+  published masses for every stage do reach orbit on them (Δ +108 m/s for Delta II, +377 for Atlas V, +21 for Ariane 5).
+  [`ASCENT_VALIDATION.md`](ASCENT_VALIDATION.md) has the tables, [`ASCENT.md`](ASCENT.md) the model and what feeding the
+  simulated losses back into the sizing does to the lift-off mass errors. None of this touches the errors in §1: the default
+  loss method is still the regression.
 * **The optimised columns in this document come from a search that is local**, run from several starts with
   the spread between them reported. On the cases here the starts agree to 0.000 %, which is evidence and
   not a proof of global optimality. The same document records a case where the optimiser silently returned

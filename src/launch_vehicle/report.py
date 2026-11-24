@@ -324,18 +324,17 @@ def _trajectory_limit_bullet(res, extras):
                 f"losses in section 6 therefore describe a flight that did not reach orbit, and the sizing "
                 f"still rests on the regression estimate. The achievability of the orbit is <b>not</b> "
                 f"demonstrated.</li>")
-    need = res.budget.info.get("v_needed_mps") or 0.0
-    margin = tr.burnout_v_mps - need
+    margin = tr.margin_mps
     short = ("" if margin >= 0 else
-             f" It finished {abs(margin):,.0f} m/s short of the speed the orbit needs, so on this profile the "
+             f" It finished {abs(margin):,.0f} m/s short of the speed the orbit needs, so on this flight the "
              f"vehicle does <b>not</b> reach the orbit.")
     return (f"<li><b>A trajectory was flown, and that is what section 6 reports.</b> Gravity, drag, propulsion "
             f"and steering losses there are integrals along an actual ascent (book Eq. 6:58), not estimates. "
-            f"Three caveats remain. The vehicle was still <b>sized</b> with the regression - the trajectory is a "
-            f"check after the fact, not part of the convergence loop. The guidance is a gravity turn with a "
-            f"commanded terminal flight path angle, which is not an optimised ascent, so its losses are an "
-            f"upper bound on what a well-flown vehicle would pay. And it is 3-DoF: no wind, no lift, no attitude "
-            f"dynamics, no plane change.{short}</li>")
+            f"Two caveats remain. The vehicle was still <b>sized</b> with the loss estimate of section 1 unless "
+            f"the loss model says otherwise - the trajectory is a check after the fact. And it is 3-DoF: no wind, "
+            f"no lift, no attitude dynamics; the pitch kick is searched and the steering above the atmosphere is "
+            f"the book's linear tangent law, which is close to the best a vehicle can do but is not an optimised "
+            f"guidance design.{short}</li>")
 
 
 def _loads_limit_bullet(res, extras):
@@ -415,6 +414,7 @@ def _requirement(res):
     loss_src = {"book_penalty": "Eqs. 3:35-3:38 regression (lumped)",
                 "book_k1k2": "Eqs. 3:33-3:34 (K1 + K2 Ta)",
                 "book_simple": "Eq. 3:32 (simple three-term fit)",
+                "simulated": "the losses of this vehicle's own simulated flight (SUPPLEMENTARY)",
                 "user": "explicit user estimates"}.get(lm, "-")
     info = [["Injection orbit", orbit],
             ["Launch site", f"latitude {_f(m.get('site_latitude_deg'), 2)} deg, "
@@ -731,11 +731,10 @@ def _orbit_rows(tr):
         return [["Orbit reached?", _e(ins.get("headline") or "not checked")]]
     word = {"reached": "Yes", "short": "Short of the target", "suborbital": "No"}.get(ins["verdict"], "")
     rows = [["Orbit reached?", f"<b>{word}.</b> {_e(ins['headline'])}"],
-            ["Burnout, inertial", f"{_f(ins['inertial_speed_mps'])} m/s at a flight path angle of "
-                                  f"{ins['inertial_gamma_deg']:+.2f} deg, after adding the launch site's "
-                                  f"{_f(ins['site_speed_mps'])} m/s back"]]
+            ["End of flight, inertial", f"{_f(ins['inertial_speed_mps'])} m/s at a flight path angle of "
+                                  f"{ins['inertial_gamma_deg']:+.2f} deg"]]
     if ins.get("eccentricity") is not None:
-        rows.append(["Orbit at burnout", f"{ins['perigee_alt_m']/1e3:,.0f} x {ins['apogee_alt_m']/1e3:,.0f} km, "
+        rows.append(["Orbit at the end", f"{ins['perigee_alt_m']/1e3:,.0f} x {ins['apogee_alt_m']/1e3:,.0f} km, "
                                          f"eccentricity {ins['eccentricity']:.4f}; asked for "
                                          f"{ins['target_perigee_alt_m']/1e3:,.0f} x "
                                          f"{ins['target_apogee_alt_m']/1e3:,.0f} km. Counted as reached within "
@@ -752,38 +751,42 @@ def _trajectory(res, extras, figures):
     tr = (extras or {}).get("trajectory")
     if not tr:
         return ""
-    need = res.budget.info.get("v_needed_mps") or 0.0
     out = ["<h2 id=traj># Ascent trajectory</h2>",
            '<div class="banner note">Everywhere else in this report the ascent losses come from a published '
            'regression fitted to historical launches. Here the vehicle is <b>flown</b>: the book\u2019s Table 6.1 '
            'equations of motion are integrated through an atmosphere, with the drag coefficient a function of '
            'Mach number, and the gravity, drag, propulsion and steering losses are the Eq. 6:58 integrals along '
-           'that trajectory. Guidance is the book\u2019s gravity turn (Sec. 6.4.7): a vertical rise, one pitch '
-           'kick found by shooting (Fig. 6.18), then free flight, handing over above the atmosphere to a '
-           'commanded flight path angle. This is a 3-DoF point-mass model: no lift, no wind, no attitude '
-           'dynamics, no plane change, and a spherical non-rotating Earth - the launch-site rotation stays in '
-           'the delta-v budget of section 1, so the burnout speed below is a planet-relative speed.</div>']
+           'that trajectory. The vehicle rises vertically, is given one pitch kick, and flies the book\u2019s '
+           'gravity turn (Sec. 6.4.7) out of the atmosphere; there it changes to linear tangent steering '
+           '(Eq. 6:59), solved to arrive level at the insertion altitude, and cuts its engine off when it has the '
+           'speed. Up to about 200 km it goes straight in; above that it coasts up and burns again (pp.372-373). '
+           'The kick is the one that leaves the most speed in hand. This is a 3-DoF point-mass model in the plane '
+           'of the orbit, on a turning spherical Earth: no lift, no wind, no attitude dynamics. Speeds below are '
+           'relative to the turning Earth unless they say inertial.</div>']
     if not tr.converged:
         out.append(f'<div class="banner no"><b>The ascent did not close.</b> {_e(tr.status)}</div>')
     rows = [["Outcome", _e(tr.status)],
+            ["Way to orbit", _e(tr.profile_why)],
             ["Pitch kick", f"{tr.kick_deg:.3f} deg after a {tr.vertical_rise_s:.0f} s vertical rise"],
-            ["Burnout", f"{_f(tr.burnout_v_mps)} m/s at {tr.burnout_h_m/1e3:,.1f} km, flight path angle "
-                        f"{tr.burnout_gamma_deg:+.2f} deg, {tr.burnout_t_s:,.0f} s after lift-off"],
-            ["Speed needed (section 1)", f"{_f(need)} m/s relative to the launch site &rarr; "
-                                         f"<b>{tr.burnout_v_mps - need:+,.0f} m/s</b> margin"],
+            ["First cutoff", f"{_f(tr.burnout_v_mps)} m/s at {tr.burnout_h_m/1e3:,.1f} km, flight path angle "
+                             f"{tr.burnout_gamma_deg:+.2f} deg, {tr.burnout_t_s:,.0f} s after lift-off"],
+            *([["Second burn", f"{_f(tr.second_burn_dv_mps)} m/s, ending {tr.final_state['t_s']:,.0f} s after lift-off"]]
+              if tr.second_burn_dv_mps else []),
+            *([["Speed in hand at the end", f"<b>{tr.margin_mps:+,.0f} m/s</b>"
+                + (f", {_f(tr.propellant_left_kg)} kg of propellant left in the last stage"
+                   if tr.propellant_left_kg > 0 else "")]] if tr.converged else []),
             *_orbit_rows(tr),
-            ["Downrange at burnout", f"{tr.downrange_m/1e3:,.0f} km"],
+            ["Downrange at the first cutoff", f"{tr.downrange_m/1e3:,.0f} km"],
             ["Max dynamic pressure", f"{tr.max_q_Pa/1e3:,.1f} kPa at {tr.max_q_t_s:,.0f} s, "
                                      f"{tr.max_q_h_m/1e3:.1f} km, Mach {tr.max_q_mach:.2f}"],
             ["Peak axial acceleration", f"{tr.max_accel_g:.2f} g"],
-            ["Largest thrust-to-velocity angle", f"{tr.max_alpha_deg:.1f} deg (zero while the gravity turn is "
-                                                 f"flying itself)"]]
+            ["Largest thrust-to-velocity angle", f"{tr.max_alpha_deg:.1f} deg (zero during the gravity turn)"]]
     out.append(_tbl(["Ascent", "Value"], rows))
     out.append(_img(figures.get("trajectory_png"),
                     "<b>Figure T.</b> The ascent: altitude and speed, flight path angle and dynamic pressure "
                     "(the book's own checklist on p.379), the ground track with its events, and the loss budget "
                     "the integration produced."))
-    out.append("<h3>Loss budget, computed rather than fitted (book Eq. 6:58)</h3>")
+    out.append("<h3>Loss budget to the first cutoff, computed rather than fitted (book Eq. 6:58)</h3>")
     tot = tr.total_loss_mps or 1.0
     lrows = [["Gravity loss", _f(tr.gravity_loss_mps, 1), f"{100*tr.gravity_loss_mps/tot:.1f}",
               "&int; g sin&gamma; dt - the cost of climbing"],
@@ -792,24 +795,25 @@ def _trajectory(res, extras, figures):
              ["Propulsion loss", _f(tr.propulsion_loss_mps, 1), f"{100*tr.propulsion_loss_mps/tot:.1f}",
               "&int; Ae P&infin;/m dt - thrust the ambient pressure takes back (Eq. 6:52)"],
              ["Steering loss", _f(tr.steering_loss_mps, 1), f"{100*tr.steering_loss_mps/tot:.1f}",
-              "&int; 2T sin&sup2;(&alpha;/2)/m dt - paid only by the terminal guidance"]]
+              "&int; T(1 &minus; cos&alpha; cos&psi;)/m dt - steering above the atmosphere, and the yaw &psi; that "
+              "removes the launch site's speed across the orbit plane"]]
     lrows.append(("sum", ["<b>Total losses</b>", f"<b>{_f(tr.total_loss_mps, 1)}</b>", "100.0", ""]))
     lrows.append(("small", ["Vacuum ideal &Delta;v (rocket equation)", _f(tr.ideal_dv_mps, 1), "",
                             "&int; T_vac/m dt over the powered phases"]))
-    lrows.append(("small", ["Closure: ideal &minus; losses &minus; burnout speed",
+    lrows.append(("small", ["Closure: ideal &minus; losses &minus; speed gained",
                             f"{tr.closure_residual_mps:+.2e}", "",
                             "the identity of Eq. 6:58; it is the check that this budget is one integration "
                             "decomposed, not four separate estimates"]))
     out.append(_tbl(["Loss", "m/s", "% of losses", "What it is"], lrows, numeric=(1, 2)))
-    bud = {ln.category: ln.value_mps for ln in res.budget.lines if ln.category == "loss"}
-    reg = sum(bud.values())
-    if reg:
-        out.append(f'<p class="small">For comparison, the regression this design was sized with put the lumped '
-                   f'ascent losses at <b>{_f(reg)} m/s</b>; the integration gives '
-                   f'<b>{_f(tr.total_loss_mps)} m/s</b>, a difference of {tr.total_loss_mps - reg:+,.0f} m/s '
-                   f'({100*(tr.total_loss_mps/reg - 1):+.1f} %). The book quotes an RMS error of about 260 m/s '
-                   f'for that regression, so agreement inside a few hundred m/s is the expected outcome and '
-                   f'disagreement beyond it is worth understanding.</p>')
+    reg = res.budget.subtotal("loss")
+    eq = tr.equivalent_loss_mps
+    if reg and eq is not None:
+        out.append(f'<p class="small">For comparison, section 1 put the lumped ascent losses at <b>{_f(reg)} m/s</b>. '
+                   f'On the same footing - what the budget adds to the orbital speed, less the speed left in hand - this '
+                   f'flight cost <b>{_f(eq)} m/s</b>, a difference of {eq - reg:+,.0f} m/s. That figure includes the '
+                   f'coast and any second burn, which the table above does not, and leaves out the back pressure the '
+                   f'sizing already takes off the first stage’s Isp. The book quotes an RMS error of about 260 m/s '
+                   f'for its loss regression.</p>')
     dt = getattr(tr, "drag_table", None)
     if dt:
         out.append("<h3>Drag coefficient, built up from this vehicle's geometry (SUPPLEMENTARY)</h3>")
@@ -873,11 +877,11 @@ def _ascent_optimum(res, extras, figures):
     rows = []
     for lab, c in (("Baseline (the programme flown in the trajectory section)", b), ("Optimised", o)):
         rows.append([lab, f"{c['handover_h_m']/1e3:.1f}", f"{c['max_alpha_deg']:.1f}",
-                     f"{c['vertical_rise_s']:.1f}", f"{c['kick_deg']:.3f}", _f(c["burnout_v_mps"]),
+                     f"{c['vertical_rise_s']:.1f}", f"{c['kick_deg']:.3f}", f"{c['margin_mps']:+,.0f}",
                      _f(c["total_loss_mps"]), f"{c['max_q_Pa']/1e3:.1f}",
                      f"{c['max_q_alpha_Pa_deg']/1e3:,.0f}", f"{c['max_accel_g']:.2f}"])
-    out.append(_tbl(["Programme", "Hand-over [km]", "&alpha; allowed [deg]", "Vertical rise [s]", "Kick [deg]",
-                     "Burnout speed [m/s]", "Total losses [m/s]", "max-q [kPa]", "max q&alpha; [kPa deg]",
+    out.append(_tbl(["Programme", "Hand-over [km]", "Largest &alpha; [deg]", "Vertical rise [s]", "Kick [deg]",
+                     "Speed in hand [m/s]", "Total losses [m/s]", "max-q [kPa]", "max q&alpha; [kPa deg]",
                      "max axial [g]"], rows, numeric=tuple(range(1, 10))))
     lim = opt.get("limits") or {}
     lrows = [["Dynamic pressure", f"{lim['max_q_Pa']/1e3:,.1f} kPa" if lim.get("max_q_Pa") else "not set",
@@ -892,7 +896,7 @@ def _ascent_optimum(res, extras, figures):
     out.append(_tbl(["Limit", "Set to", "At the optimum"], lrows))
     bind = opt.get("binding") or {}
     if bind.get("detail"):
-        out.append(f'<p>Stepping past the optimum gives: <b>{_e(bind["detail"])}</b>. The limits above are '
+        out.append(f'<p>At the optimum: <b>{_e(bind["detail"])}</b>. The limits above are '
                    f'inputs, not findings - the dynamic pressure and q&alpha; defaults are what the book\u2019s '
                    f'own generic vehicle reached in Fig. 9.36, not certified limits for this design, and they '
                    f'are the numbers that decide the answer. Change them and the optimum moves.</p>')
@@ -906,13 +910,11 @@ def _ascent_optimum(res, extras, figures):
                  ["Optimised programme", _f(po["payload_kg"]), f"{po['surplus_speed_mps']:+,.0f}"],
                  ("sum", ["<b>Gain</b>", f"<b>{opt['payload_gain_kg']:+,.0f} kg</b>",
                           f"<b>{opt['speed_gain_mps']:+,.0f} m/s</b>"])]
-        out.append(_tbl(["Programme", "Payload to the design orbit [kg]", "Surplus burnout speed [m/s]"],
+        out.append(_tbl(["Programme", "Payload to the design orbit [kg]", "Speed in hand [m/s]"],
                         prows, numeric=(1, 2)))
-        out.append(f'<p class="small">Both payloads come from flying the vehicle heavier until burnout speed '
-                   f'just meets the {pb["v_needed_mps"]:,.0f} m/s the orbit needs, with every other thing about '
-                   f'the vehicle frozen. So this is what better steering is worth on the vehicle <b>as built</b>, '
-                   f'not what a vehicle designed around the better profile would be - that needs the sizing loop '
-                   f'to use the integrated losses, which it does not.</p>')
+        out.append(f'<p class="small">Both payloads come from flying the vehicle heavier until no speed '
+                   f'is left over, with every other thing about the vehicle frozen. So this is what better steering is worth on the vehicle <b>as built</b>, '
+                   f'not what a vehicle designed around the better profile would be.</p>')
     out.append(f'<p class="small">{opt["evaluations"]} trajectories were flown in the search. '
                + "<br>".join(_e(n) for n in opt.get("notes") or []) + "</p>")
     return "".join(out)

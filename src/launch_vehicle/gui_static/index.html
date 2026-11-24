@@ -1282,8 +1282,13 @@ const SUMMARY_LABELS = {
   governing: "Governing case", moment_kNm: "Governing bending moment [kN\u00b7m]", z_m: "at z [m]",
   thickest_mm: "Thickest shell required [mm]", shell: "Which shell", driver: "Sized by",
   mass_ratio: "Monocoque / relationship mass", converged: "Converged",
-  max_q_kPa: "Maximum dynamic pressure [kPa]", burnout_h_km: "Burnout altitude [km]",
-  burnout_v_mps: "Burnout speed [m/s]", axial_g: "Design axial load factor [g]",
+  margin_mps: "Speed in hand at the end [m/s]", propellant_left_kg: "Propellant left in the last stage [kg]",
+  second_burn_dv_mps: "Second burn [m/s]", profile_why: "Way to orbit",
+  equivalent_loss_mps: "Losses of this flight, against the Δv budget [m/s]", budget_loss_mps: "Losses the design was sized with [m/s]",
+  gravity_loss_mps: "Gravity loss to the first cutoff [m/s]", propulsion_loss_mps: "Back-pressure loss to the first cutoff [m/s]",
+  steering_loss_mps: "Steering loss to the first cutoff [m/s]",
+  max_q_kPa: "Maximum dynamic pressure [kPa]", burnout_h_km: "Altitude at the first cutoff [km]",
+  burnout_v_mps: "Speed at the first cutoff [m/s]", axial_g: "Design axial load factor [g]",
   lateral_g: "Design lateral load factor [g]", event: "Governing event",
   development_usd: "Development cost [$]", per_flight_usd: "Cost per flight [$]",
   usd_per_kg: "Cost per kg to orbit [$]", year: "Cost year",
@@ -1291,7 +1296,7 @@ const SUMMARY_LABELS = {
   p05_glom_kg: "Lift-off mass, 5th percentile [kg]", p50_glom_kg: "Lift-off mass, median [kg]",
   p95_glom_kg: "Lift-off mass, 95th percentile [kg]", n: "Samples",
   payload_kg: "Payload at the optimum [kg]", gain_kg: "Payload gained [kg]", binding: "Binding limit",
-  attempted: "Flown", status: "Outcome", drag_loss_mps: "Drag loss [m/s]",
+  attempted: "Flown", status: "Outcome", drag_loss_mps: "Drag loss to the first cutoff [m/s]",
   peak_cd: "Peak drag coefficient", drag_shape: "Shape at lift-off",
 };
 
@@ -1487,16 +1492,15 @@ function orbitCheck(o) {
     rows.push(["Apogee altitude [km]", km(o.apogee_alt_m), km(o.target_apogee_alt_m)]);
     rows.push(["Eccentricity", o.eccentricity.toFixed(4), ""]);
   }
-  rows.push(["Inertial speed at burnout [m/s]", fmt(o.inertial_speed_mps, 0), ""]);
-  rows.push(["Inertial flight path angle at burnout [deg]", o.inertial_gamma_deg.toFixed(2), "0.00"]);
+  rows.push(["Inertial speed at the end [m/s]", fmt(o.inertial_speed_mps, 0), ""]);
+  rows.push(["Inertial flight path angle at the end [deg]", o.inertial_gamma_deg.toFixed(2), "0.00"]);
   if (o.speed_margin_mps !== null && o.speed_margin_mps !== undefined)
-    rows.push(["Speed to spare against the budget [m/s]", (o.speed_margin_mps >= 0 ? "+" : "") + fmt(o.speed_margin_mps, 0), ""]);
+    rows.push(["Speed in hand [m/s]", (o.speed_margin_mps >= 0 ? "+" : "") + fmt(o.speed_margin_mps, 0), ""]);
   box.append(table(["", "Flown", "Asked for"], rows, [1, 2]));
   const notes = (o.notes || []).slice();
   if (o.eccentricity !== null && o.eccentricity !== undefined)
     notes.push(`Counted as reached within ${km(o.tolerance_perigee_m)} km at perigee and ${km(o.tolerance_apogee_m)} km at apogee: `
-               + "an assumed reporting tolerance, not an injection accuracy. The launch site's "
-               + `${fmt(o.site_speed_mps, 0)} m/s of rotation is added back to the flown speed to get the inertial one.`);
+               + "an assumed reporting tolerance, not an injection accuracy.");
   for (const n of notes) box.append(el("p", {class: "small", text: n}));
   return box;
 }
@@ -2383,16 +2387,12 @@ function render() {
          "max-q 4,833 kPa" under four authoritative-looking charts, with "Converged: false" as the first of
          four unremarkable table rows. Say it first, say why, and say what the numbers below actually are. */
       if (ss && ss.converged === false) {
-        /* Two different things, which must not read the same. `attempted === false` means this model cannot
-           represent the mission's ascent at all (GTO and above are flown burn-coast-restart in reality), so
-           there is nothing below to diagnose and nothing failed about the vehicle. A failed ATTEMPT is a
-           finding about the vehicle; an unattempted one is a statement about the model. */
+        /* Two different things, which must not read the same: a failed ATTEMPT is a finding about the vehicle;
+           an unattempted one is not. */
         const notAttempted = ss.attempted === false;
         const box = el("div", {class: notAttempted ? "msg" : "msg bad"}, notAttempted ? [
-          el("b", {text: "Ascent not simulated for this mission class. "}),
-          el("span", {text: "Nothing failed here and there are no figures below: this model flies every "
-                            + "stage continuously, so it cannot represent a mission the real vehicle flies "
-                            + "with a coast and a restart. The mass and Δv results are unaffected."})] : [
+          el("b", {text: "Ascent not simulated. "}),
+          el("span", {text: "Nothing failed here and there are no figures below. The mass and Δv results are unaffected."})] : [
           el("b", {text: "This analysis did not converge. "}),
           el("span", {text: "The figures and charts below describe the attempt that failed, not this "
                             + "vehicle — read them as a diagnosis, not as a result."})]);
@@ -2414,6 +2414,8 @@ function render() {
                             typeof x === "number" ? fmt(x, Math.abs(x) < 100 ? 2 : 0)
                               : typeof x === "boolean" ? (x ? "yes" : "no") : String(x)]);
         if (rows.length) v.append(table(["Quantity", "Value"], rows, [1]));
+        if (S.tab === "trajectory" && ss.notes && ss.notes.length)
+          for (const n of ss.notes) v.append(el("p", {class: "small", text: n}));
         if (ss.profiles && ss.profiles.length)
           v.append(el("p", {class: "small", text: "Wind profiles flown: " + ss.profiles.join(", ")}));
       }

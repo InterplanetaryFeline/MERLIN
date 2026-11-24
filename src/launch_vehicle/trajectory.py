@@ -1,5 +1,11 @@
 """3-DoF ascent trajectory: the book's Table 6.1 equations of motion, integrated (book Sec. 6.3-6.6).
 
+`fly_design` flies a sized design to orbit with the solver in `ascent.py` (gravity turn, then linear tangent steering
+to a level arrival, engine cutoff, coast and second burn, on a turning Earth). This module holds what that shares with
+everything else: the vehicle as the integrator sees it, the result, the orbit check and the timeline. `integrate` and
+`shoot_for_altitude` below are the book's pure gravity turn and its shooting method (Fig. 6.18), kept because the drag
+validation and the tests fly published pitch programmes with them.
+
 This is the module that stops the tool taking its losses on faith. Everywhere else, the delta-v requirement comes
 from a published regression fitted to historical launches; here the vehicle is actually flown, and the gravity,
 drag, propulsion and steering losses fall out of the integration as the book defines them (Eq. 6:58).
@@ -33,11 +39,8 @@ difference integral[Ae Pinf / m]dt is exactly the thrust the atmosphere steals. 
 speed reconstruct the vacuum ideal delta-v to integration accuracy, which the result carries as a residual and
 the tests pin.
 
-What this is not: a 6-DoF simulation, a trajectory optimiser, or a guidance design. There is no wind, no lift, no
-angle-of-attack history, no throttling law beyond what the design states, and no plane change. The Earth is
-spherical and non-rotating in the integration; the launch-site rotation is handled where it always was, in the
-delta-v budget, and the trajectory's burnout speed is therefore a planet-relative speed to be compared with the
-budget's "speed needed relative to the launch site".
+What this is not: a 6-DoF simulation or a guidance design. There is no wind, no lift and no attitude dynamics, and
+`integrate` itself is on a spherical, non-rotating Earth with no throttling.
 """
 from __future__ import annotations
 import math
@@ -67,6 +70,8 @@ class Burn:
     jettison_kg: float = 0.0          # mass dropped at the END of this segment
     jettison_note: str = ""
     powered: bool = True
+    stoppable: bool = False           # can be shut down before it runs dry, and lit again (a liquid engine)
+    throttle_min: float = 1.0         # the smallest fraction of full thrust it can run at
 
 
 @dataclass
@@ -177,6 +182,20 @@ class TrajectoryResult:
     drag_table: dict | None = None
     #: the orbit the burnout state is on against the one asked for (see insertion_orbit), set by fly_design
     insertion: dict | None = None
+    # ---- set by ascent.fly (a flight to orbit). `burnout_*`, the losses and the ideal above describe the ascent
+    # proper, to the first cutoff; what follows describes the whole flight.
+    profile: str = ""                  # direct | transfer | parking | solid
+    profile_why: str = ""
+    parking_altitude_m: float = 0.0    # altitude of the first insertion
+    margin_mps: float = 0.0            # speed left in the tanks at the end (+), or missing (-)
+    propellant_left_kg: float = 0.0
+    second_burn_dv_mps: float = 0.0
+    ideal_used_mps: float = 0.0        # ideal speed spent, every burn
+    start_v_mps: float = 0.0           # speed at the start: zero on a pad, the carrier's in an air launch
+    equivalent_loss_mps: float | None = None    # see equivalent_loss_mps(), against the budget's own losses
+    budget_loss_mps: float = 0.0
+    yaw_deg: float = 0.0               # constant out-of-plane thrust angle that cancels the site's crosswise speed
+    final_state: dict | None = None    # the state after the last burn, with the inertial horizontal and vertical speed
 
     @property
     def total_loss_mps(self):
@@ -502,8 +521,10 @@ def ascent_vehicle_from_result(res, drag: aero.DragModel | None = None, atmosphe
 
     Each stage becomes one powered burn at its sized thrust and mass flow, with its inert mass jettisoned at the
     end; the staging delay becomes an unpowered coast. A stage with strap-ons attached is expanded into the
-    parallel-burn phases the boosters module already solved, so the trajectory sees the same thrust history the
-    mass budget does. The nozzle exit area comes from the stage's own sea-level and vacuum thrust
+    parallel-burn phases the boosters module already solved, with the vacuum thrust of everything burning and the
+    back pressure on every nozzle. (The phases themselves carry a sea-level/vacuum average of the Isp, which is right
+    for a mass ratio and wrong for a flight: with the core's back pressure taken off it as well, it charged that twice.)
+    The nozzle exit area comes from the stage's own sea-level and vacuum thrust
     (Ae = (T_vac - T_SL)/P0, exact by Eq. 6:52), falling back to the engine geometry when a stage has no
     sea-level figure.
     """
@@ -532,6 +553,8 @@ def ascent_vehicle_from_result(res, drag: aero.DragModel | None = None, atmosphe
         elif s.nozzle_dims is not None:
             ae = 0.25 * math.pi * getattr(s.nozzle_dims, "exit_diameter_m", 0.0) ** 2
         jett = s.m_dry_kg + s.m_residual_kg + s.m_margin_prop_kg
+        stop = not s.is_solid
+        thr = 1.0 if s.is_solid else float(getattr(st.engine, "throttle_min", None) or 1.0)
         phases = list(s.phases or [])
         if phases:
             # the phase model emits zero-duration "Jettison ..." phases whose mass step is the hardware dropped;
@@ -548,23 +571,31 @@ def ascent_vehicle_from_result(res, drag: aero.DragModel | None = None, atmosphe
                     continue
                 last = p is powered[-1]
                 first = p is powered[0]
-                shapes.append((s.index, n_boost, p.name.startswith("Parallel burn")))
+                on = re.match(r"Parallel burn: core \+ (\d+) x", p.name)
+                n_on = int(on.group(1)) if on else 0
+                bb = res.boosters
+                t_vac = s.thrust_vac_N + (n_on * bb.thrust_vac_each_N if n_on else 0.0)
+                a_all = ae
+                if n_on and bb.thrust_sl_each_N and bb.thrust_vac_each_N > bb.thrust_sl_each_N:
+                    a_all += n_on * (bb.thrust_vac_each_N - bb.thrust_sl_each_N) / P0_PA
+                shapes.append((s.index, n_boost, p.name.startswith("Parallel burn"), ae))
                 burns.append(Burn(startup_kg=s.m_startup_kg if first else 0.0,
                                   name=f"stage {s.index} {p.name}", duration_s=p.duration_s,
-                                  thrust_vac_N=p.thrust_eff_N, mdot_kgs=p.mdot_total_kgs,
-                                  exit_area_m2=ae, isp_vac_s=p.isp_eff_s,
+                                  thrust_vac_N=t_vac, mdot_kgs=p.mdot_total_kgs,
+                                  exit_area_m2=a_all, isp_vac_s=t_vac / (p.mdot_total_kgs * G0),
                                   jettison_kg=jett if last else 0.0,
-                                  jettison_note=f"stage {s.index} jettison" if last else ""))
+                                  jettison_note=f"stage {s.index} jettison" if last else "",
+                                  stoppable=stop and last))
         else:
-            shapes.append((s.index, 0, False))
+            shapes.append((s.index, 0, False, ae))
             burns.append(Burn(name=f"stage {s.index}", duration_s=s.burn_time_s, startup_kg=s.m_startup_kg,
                               thrust_vac_N=s.thrust_vac_N, mdot_kgs=s.mdot_kgs, exit_area_m2=ae,
                               isp_vac_s=st.prop_system.isp_vac_s, jettison_kg=jett,
-                              jettison_note=f"stage {s.index} jettison"))
+                              jettison_note=f"stage {s.index} jettison", stoppable=stop, throttle_min=thr))
         if coast_between_stages and s.index < stages[-1].index and spec.mission.get("staging_delay_s"):
             burns.append(Burn(name=f"coast {s.index}/{s.index+1}", duration_s=spec.mission["staging_delay_s"],
                               powered=False))
-            shapes.append((s.index + 1, 0, False))
+            shapes.append((s.index + 1, 0, False, 0.0))
             if fairing_index is not None and fairing_index == len(burns) - 1:
                 fairing_index -= 1
     by_burn = None
@@ -574,10 +605,10 @@ def ascent_vehicle_from_result(res, drag: aero.DragModel | None = None, atmosphe
         from . import drag_buildup as db
         made = {}
         by_burn = []
-        for burn, (first_stage, n_on, lit) in zip(burns, shapes):
-            key = (first_stage, n_on, lit, round(burn.exit_area_m2, 6))
+        for burn, (first_stage, n_on, lit, core_ae) in zip(burns, shapes):
+            key = (first_stage, n_on, lit, round(core_ae, 6))
             if key not in made:
-                cfg = db.configuration_from_result(res, first_stage, n_on, lit, burn.exit_area_m2 or None,
+                cfg = db.configuration_from_result(res, first_stage, n_on, lit, core_ae or None,
                                                    drag.buildup_options)
                 cfg.reference_area_m2 = sref
                 made[key] = replace(drag, buildup=cfg, notes=list(drag.notes))
@@ -595,58 +626,21 @@ def ascent_vehicle_from_result(res, drag: aero.DragModel | None = None, atmosphe
 
 
 def _diagnose(res, veh: AscentVehicle, out: TrajectoryResult) -> str:
-    """Say why an ascent would not close, in terms the designer can act on.
-
-    The usual reason is not the shooting: it is that the vehicle cannot fly the profile at all. An upper stage
-    with a thrust-to-weight far below one cannot hold a flight path while it is still well short of orbital
-    speed - gravity turns it down faster than the thrust can turn it back up - so the trajectory sinks into the
-    atmosphere whatever the pitch kick. Real vehicles of that kind (Delta II's AJ10 second stage, Centaur,
-    ESC-A) fly optimised, closed-loop ascents that this gravity-turn model does not reproduce.
-    """
-    last = res.stages[-1]
-    tw = last.tw_ignition
+    """Say why an ascent would not close, in terms the designer can act on."""
     bits = []
-    if tw < 0.5:
-        bits.append(f"stage {last.index} ignites at T/W {tw:.2f}. A stage that light on thrust cannot hold its "
-                    f"flight path on a gravity turn: it needs the optimised, closed-loop ascent guidance this "
-                    f"model does not have (book Sec. 6.4.8-6.4.9), so the failure is the guidance model, not the "
-                    f"vehicle")
-    if out.max_q_Pa > 100e3:
-        bits.append(f"peak dynamic pressure reached {out.max_q_Pa/1e3:.0f} kPa, which means the trajectory came "
-                    f"back down into the atmosphere rather than climbing out of it")
+    for s in res.stages[1:]:
+        if s.tw_ignition < 0.35 and s.burn_time_s > 600.0:
+            bits.append(f"stage {s.index} ignites at a thrust-to-weight of {s.tw_ignition:.2f} and burns for "
+                        f"{s.burn_time_s / 60.0:.0f} minutes. It falls faster than it gains speed: give it more thrust, or "
+                        f"move delta-v to the stage below so that it starts closer to orbital speed")
+    b0 = veh.burns[0] if veh.burns else None
+    if b0 is not None and not res.spec.mission.get("air_launch"):
+        tw = max(b0.thrust_vac_N - b0.exit_area_m2 * P0_PA, 0.0) / (veh.m0_kg * G0)
+        if tw < 1.05:
+            bits.append(f"the lift-off thrust-to-weight at sea level is {tw:.2f}")
     if not bits:
-        bits.append("no single cause stands out; try a different vertical-rise time or inspect the state history")
+        bits.append("no single cause stands out; the state history shows where it turns over")
     return "why it did not close: " + "; ".join(bits)
-
-
-#: Mission classes whose real ascent is flown as burn - coast - restart, which this model does not implement.
-#: Measured, not assumed. Official sequences: Atlas V 551 (MUOS-1) burns 461 s / coasts 508 s / burns 361 s /
-#: coasts 9,000 s / burns 54 s; Delta IV Heavy (DSP-23) 422 s / 3,751 s / 396 s / 17,297 s / 181 s, through a
-#: 117 x 851 nmi parking orbit; Delta IV M+(4,2) to GTO 517 s / 620 s / 299 s through 185 x 595 km. The model
-#: burns every stage continuously instead, which builds a 1,300-1,900 s upper-stage burn that no single pitch
-#: programme can fly to a 250 km burnout. Ariane 5 ECA is the exception that proves this is about the profile
-#: and not the orbit: its ESC-A is NOT restartable (945 s nominal, one burn, direct ascent) and its ascent
-#: fails for a different reason - the tool gives it twice the real ESC-A propellant.
-UNFLOWN_ORBIT_TYPES = ("GTO", "GEO_VIA_GTO", "GEO_DIRECT")
-
-
-def ascent_supported(spec) -> tuple:
-    """Can this model represent the mission's ascent at all? Returns (supported, reason).
-
-    Asked BEFORE any shooting, so that a mission the model cannot fly is reported as out of scope instead of
-    as a vehicle that cannot reach orbit. The two read identically in a chart and mean opposite things.
-    """
-    otype = (spec.mission.get("orbit_type") or "").upper()
-    if otype in UNFLOWN_ORBIT_TYPES:
-        return False, (
-            f"ascent simulation is not attempted for a {otype} mission. The real vehicles fly these as "
-            f"burn-coast-restart - Atlas V 551 uses three Centaur burns around a 508 s and a 9,000 s coast, "
-            f"Delta IV Heavy three DCSS burns through a 117 x 851 nmi parking orbit - and this model burns "
-            f"every stage continuously to depletion, with no coast and no restart. Forcing a single-burn "
-            f"ascent onto such a mission produces a trajectory the vehicle would never fly, so none is "
-            f"shown. The mass and delta-v results above are unaffected: they do not come from the "
-            f"trajectory. LEO and SSO missions are flown normally.")
-    return True, ""
 
 
 def drag_table(veh: AscentVehicle, traj=None) -> dict | None:
@@ -694,19 +688,15 @@ TIMELINE_MACH_CEILING_M = 100e3
 
 
 def insertion_orbit(res, traj, r_planet_m: float = 6378e3, last_ascent_stage: int | None = None) -> dict:
-    """The orbit the flown burnout state is on, against the orbit the mission asked for.
+    """The orbit the end of the flight is on, against the orbit the mission asked for.
 
-    The integration is on a non-rotating Earth, so its burnout speed is relative to the launch site. The
-    launch site's eastward speed is added back exactly as the delta-v budget took it out (orbit.needed_speed,
-    book Example 3.9): the horizontal inertial velocity V along the launch azimuth beta satisfies
-    |V u(beta) - v_site east| = v cos(gamma), so V = v_site sin(beta) + sqrt((v cos gamma)^2 - (v_site cos beta)^2).
-    The vertical component is unchanged. From the inertial speed, flight path angle and radius the orbit
-    follows from two-body energy and angular momentum:
+    A flight from `ascent.fly` carries its inertial horizontal and vertical speed, because it is integrated on a
+    turning Earth. For any other state the integration is on a non-rotating Earth, its burnout speed is relative to
+    the launch site, and the site's eastward speed is added back as the delta-v budget took it out (orbit.needed_speed,
+    book Example 3.9): V = v_site sin(beta) + sqrt((v cos gamma)^2 - (v_site cos beta)^2). The orbit then follows from
+    two-body energy and angular momentum:
 
         eps = v^2/2 - mu/r,  a = -mu/(2 eps),  h = r v cos(gamma_i),  e = sqrt(1 + 2 eps h^2/mu^2)
-
-    with mu = g0 Rp^2, the same gravity the integration used. The site speed is the launch latitude's, held to
-    burnout, which is the budget's own approximation.
     """
     info = res.budget.info
     target = info.get("orbit")
@@ -729,26 +719,31 @@ def insertion_orbit(res, traj, r_planet_m: float = 6378e3, last_ascent_stage: in
         return out
 
     mu = G0 * r_planet_m * r_planet_m
-    v, gam = traj.burnout_v_mps, math.radians(traj.burnout_gamma_deg)
-    r = r_planet_m + traj.burnout_h_m
     vs = float(info.get("v_site_mps") or 0.0)
-    beta = math.radians(float(info.get("azimuth_deg") or 90.0))
-    vh, vv = v * math.cos(gam), v * math.sin(gam)
-    disc = vh * vh - (vs * math.cos(beta)) ** 2
-    v_hor = vs * math.sin(beta) + math.sqrt(max(disc, 0.0))
+    fin = getattr(traj, "final_state", None)
+    if fin:
+        r_planet_m, mu = fin.get("r_planet_m", r_planet_m), fin.get("mu", mu)
+        v_hor, vv, h_end = fin["horizontal_mps"], fin["vertical_mps"], fin["h_m"]
+    else:
+        v, gam = traj.burnout_v_mps, math.radians(traj.burnout_gamma_deg)
+        beta = math.radians(float(info.get("azimuth_deg") or 90.0))
+        vh, vv, h_end = v * math.cos(gam), v * math.sin(gam), traj.burnout_h_m
+        disc = vh * vh - (vs * math.cos(beta)) ** 2
+        v_hor = vs * math.sin(beta) + math.sqrt(max(disc, 0.0))
+    r = r_planet_m + h_end
     v_in = math.hypot(v_hor, vv)
     gam_in = math.atan2(vv, v_hor)
     eps = 0.5 * v_in * v_in - mu / r
     need = float(info.get("v_needed_mps") or 0.0)
     out.update(checked=True, inertial_speed_mps=v_in, inertial_gamma_deg=math.degrees(gam_in),
-               site_speed_mps=vs, burnout_alt_m=traj.burnout_h_m,
-               speed_margin_mps=(v - need) if need else None)
+               site_speed_mps=vs, burnout_alt_m=h_end,
+               speed_margin_mps=(traj.margin_mps if fin else (traj.burnout_v_mps - need) if need else None))
     tp, ta = target.perigee_alt_m, target.apogee_alt_m
     tol_p = max(ORBIT_TOLERANCE_M, ORBIT_TOLERANCE_FRACTION * tp)
     tol_a = max(ORBIT_TOLERANCE_M, ORBIT_TOLERANCE_FRACTION * ta)
     out.update(tolerance_perigee_m=tol_p, tolerance_apogee_m=tol_a)
     if eps >= 0.0:
-        out.update(verdict="reached", perigee_alt_m=traj.burnout_h_m, apogee_alt_m=None, eccentricity=None,
+        out.update(verdict="reached", perigee_alt_m=h_end, apogee_alt_m=None, eccentricity=None,
                    headline="Burnout is faster than escape speed: the target orbit is exceeded, not missed.")
         return out
     a = -mu / (2.0 * eps)
@@ -761,22 +756,24 @@ def insertion_orbit(res, traj, r_planet_m: float = 6378e3, last_ascent_stage: in
     asked = f"{km(tp)} x {km(ta)} km"
     if hp >= tp - tol_p and ha >= ta - tol_a:
         out["verdict"] = "reached"
-        out["headline"] = f"Target orbit reached: burnout is on a {flown} orbit against {asked} asked for."
+        out["headline"] = f"Target orbit reached: the flight ends on a {flown} orbit against {asked} asked for."
         if ha > ta + tol_a:
             out["notes"].append(f"The apogee is {km(ha - ta)} km above the target: the vehicle arrives with "
-                                f"speed to spare, which is unused performance rather than an error.")
+                                f"speed to spare, which is unused performance rather than an error."
+                                + (" A solid last stage cannot be shut down to stop there."
+                                   if getattr(traj, "profile", "") == "solid" else ""))
     elif hp >= ORBIT_FLOOR_ALTITUDE_M:
         out["verdict"] = "short"
-        out["headline"] = (f"In orbit, but short of the target: burnout is on a {flown} orbit against "
+        out["headline"] = (f"In orbit, but short of the target: the flight ends on a {flown} orbit against "
                            f"{asked} asked for.")
     else:
         out["verdict"] = "suborbital"
         path = (f"a path that comes back to the ground after an apogee of {km(ha)} km" if hp <= 0.0
                 else f"a {flown} path, whose perigee is below {km(ORBIT_FLOOR_ALTITUDE_M)} km")
-        out["headline"] = f"Not in orbit: burnout is on {path}, against {asked} asked for."
+        out["headline"] = f"Not in orbit: the flight ends on {path}, against {asked} asked for."
     if abs(math.degrees(gam_in)) > 1.0:
-        out["notes"].append(f"The flight path angle at burnout is {math.degrees(gam_in):+.1f} deg, not level, "
-                            f"so the burnout point is not the perigee.")
+        out["notes"].append(f"The flight path angle at the end is {math.degrees(gam_in):+.1f} deg, not level, "
+                            f"so the flight does not end at the perigee.")
     return out
 
 
@@ -829,9 +826,10 @@ def timeline(traj) -> list:
         # sample's own mass is already the mass AFTER the spent stage has gone, so pairing the two would
         # report the dying stage's thrust pushing only what is left: 8.8 g on a vehicle that saw 4.7. The
         # burnout event carries the mass before the jettison, and that is the one to use there.
-        before = {e["t_s"]: e["mass_kg"] for e in traj.events if e["name"].endswith(" burnout")}
+        before = {e["t_s"]: e["mass_kg"] for e in traj.events if e["name"].endswith((" burnout", " cutoff"))}
         mass = [max(traj.m_kg[j], before.get(ts[j], 0.0)) for j in range(len(ts))]
         sensed = [(traj.thrust_N[j] - traj.drag_N[j]) / (mass[j] * G0) for j in range(len(ts))]
+        # nothing is felt after the last engine stops
         k = max(range(len(ts)), key=lambda j: sensed[j])
         row = at(k, f"Peak axial acceleration, {sensed[k]:.2f} g")
         row["mass_kg"] = mass[k]
@@ -840,36 +838,47 @@ def timeline(traj) -> list:
     return [rows[j] for j in order]
 
 
-def unflown(spec, vehicle_name: str, reason: str) -> TrajectoryResult:
-    """The result object for an ascent that was deliberately not attempted."""
-    out = TrajectoryResult(vehicle_name=vehicle_name, converged=False, status=reason, attempted=False)
-    out.notes.append(reason)
-    return out
+def flight_options(spec) -> dict:
+    """The ascent inputs of a design, as arguments for `fly_design` and the ascent optimiser (drag aside)."""
+    m = spec.mission
+    return dict(atmosphere=m.get("atmosphere_model") or "book_exponential",
+                vertical_rise_s=float(m.get("vertical_rise_s") or 10.0),
+                last_ascent_stage=m.get("last_ascent_stage"),
+                profile=m.get("ascent_profile") or "auto",
+                parking_altitude_m=m.get("parking_altitude_m"))
+
+
+def equivalent_loss_mps(res, traj) -> float | None:
+    """The losses of the whole flight on the delta-v budget's own footing: everything the budget added to the orbital
+    speed, less the speed left in hand. Sized with this number the vehicle would arrive with only its margin lines.
+
+    Not the sum of the loss integrals: those stop at the first cutoff, and they count the back pressure that the
+    sizing has already taken out of the first stage's effective Isp.
+    """
+    if not traj.converged or not traj.ideal_used_mps or res.spec.mission.get("dv_override_mps") is not None:
+        return None
+    b = res.budget
+    return b.total_mps - b.subtotal("ideal", "rotation") - traj.margin_mps
 
 
 def fly_design(res, drag: aero.DragModel | None = None, atmosphere: str = "book_exponential",
-               vertical_rise_s: float = 10.0, dt: float = 0.25, target_altitude_m: float | None = None,
+               vertical_rise_s: float = 10.0, dt: float = 0.5, target_altitude_m: float | None = None,
                kick_deg: float | None = None, last_ascent_stage: int | None = None,
-               force: bool = False) -> TrajectoryResult:
-    """Fly a converged design: shoot for the mission's injection altitude, or fly a given kick angle.
+               profile: str = "auto", parking_altitude_m: float | None = None, **options) -> TrajectoryResult:
+    """Fly a converged design to its orbit (see `ascent.py`), or fly one given pitch kick.
 
-    Refuses up front for a mission class this model cannot represent (see `ascent_supported`), unless
-    `force=True`, which is for studying the refusal itself rather than for reporting.
+    `profile` is auto | direct | parking; `options` go to `ascent.Flight` (hand-over altitude and dynamic pressure,
+    limits).
     """
-    if not force:
-        ok, why = ascent_supported(res.spec)
-        if not ok:
-            out = unflown(res.spec, getattr(res.spec, "name", "vehicle"), why)
-            out.insertion = insertion_orbit(res, out)
-            return out
+    from . import ascent
     veh = ascent_vehicle_from_result(res, drag, atmosphere, last_ascent_stage=last_ascent_stage)
-    target = target_altitude_m if target_altitude_m is not None else res.spec.mission["perigee_altitude_m"]
-    if kick_deg is not None:
-        out = integrate(veh, Guidance(vertical_rise_s=vertical_rise_s, kick_deg=kick_deg), dt=dt)
-    else:
-        out = shoot_for_altitude(veh, target, vertical_rise_s=vertical_rise_s, dt=dt)
+    f = ascent.flight_for(res, veh, profile or "auto", parking_altitude_m or ascent.PARKING_M, target_altitude_m,
+                          last_ascent_stage, rise_s=vertical_rise_s, **options)
+    sol = f.search()[0] if kick_deg is None else f.try_kick(kick_deg)
+    out = ascent.fly(f, sol, veh.name, dt)
     if not out.converged:
         out.notes.append(_diagnose(res, veh, out))
+    out.notes.extend(ascent.notes(f, sol, out))
     out.notes.append(f"drag model: {veh.drag.describe()}")
     out.notes.extend(veh.drag.notes)
     out.drag_table = drag_table(veh, out)
@@ -877,4 +886,6 @@ def fly_design(res, drag: aero.DragModel | None = None, atmosphere: str = "book_
                      f"(max vehicle diameter {res.geometry.max_diameter:.2f} m)")
     out.notes.append(f"atmosphere: {atmosphere}")
     out.insertion = insertion_orbit(res, out, veh.r_planet_m, last_ascent_stage)
+    out.equivalent_loss_mps = equivalent_loss_mps(res, out) if last_ascent_stage is None else None
+    out.budget_loss_mps = res.budget.subtotal("loss")
     return out

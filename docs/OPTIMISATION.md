@@ -26,10 +26,10 @@ optimisation was requested but not applied. A design file with no `optimise_dv_s
 split into the input panel as a changed value with its revert arrow, like any other override.
 
 It was off by default until v1.1 and is on now because the published accuracy figures are for the optimised split.
-**The lightest vehicle is not necessarily one that flies.** The search minimises mass with the regression's ascent
-losses, and the simulated ascent, one continuous burn straight to the orbit, can lose far more: on the shipped default, at
-35/65, it falls about 320 m/s short of 400 km. A parking orbit would recover it, but the model cannot fly one (USER_MANUAL
-7.5). Read the Trajectory tab's verdict before using the split.
+**The lightest vehicle is not necessarily one that flies well.** The search minimises mass with the loss method the design
+uses. The book's regressions hardly depend on the split, so they favour a small first stage, and the simulated ascent of the
+result has less speed in hand: 193 m/s on the shipped default at 35/65, against 445 m/s at 44/56. With the *simulated* loss
+method (USER_MANUAL 7.5) the losses follow the split, and the search gives 45/55 instead.
 
 
 ## 2. What you can optimise towards
@@ -94,9 +94,9 @@ well within 1 %.
 - **Only the delta-v allocation is searched.** Stage count, propellants, diameters, engines and the
   structural model are all fixed. Those are compared by evaluating configurations you supply
   (`compare_designs`, and the GUI's stage-count and booster controls), never by implicit search.
-- **No trajectory quantity enters the objective.** This is deliberate. The drag model is a single
-  C<sub>D</sub>(M) curve and the tool has no throttle profile, so a trajectory-derived objective would be
-  optimising against the weakest part of the model. The loss regression is used, as in an ordinary sizing.
+- **With the book's loss methods, no trajectory quantity enters the objective.** With the simulated loss method the losses
+  are flown at a spread of splits, interpolated between them, and flown again at each optimum found until the two agree
+  within 10 m/s (M109).
 - **An optimiser exploits model error.** The monocoque structure sizing comes out at ~2.04× the MER mass on
   the default design (roadmap R21) and is not fed back. That disagreement is harmless while nothing searches
   over the variables it affects — it is a reason to be careful about *widening* the search, not about the

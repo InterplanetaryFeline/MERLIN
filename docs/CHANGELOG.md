@@ -3,11 +3,30 @@
 Newest first. Entries are kept as written at each release, so what they say about the tool's limits and numbers
 was true of that version. [`ACCURACY.md`](ACCURACY.md) has the current measurements.
 
-**What changed in v1.3.0 - the cost model in work-years**
+**What changed in v1.3.0 - an ascent flown to orbit, and the cost model in work-years**
 
 *Not released yet.*
 
-*Corrections.* Development cost was wrong in six ways. The engine relation was given the mass of a whole cluster
+*The ascent is flown to orbit.* It was one continuous burn, straight to the target altitude, on a gravity turn, on an Earth
+that does not turn. It is now linear tangent steering above the air (book Eq. 6:59), solved to arrive level; the engine stops
+when the orbit is reached and what is left is reported; orbits above 200 km are reached by inserting low, coasting and burning
+again (book pp.372-373), or straight in if you choose; the Earth turns under the flight; a solid last stage coasts to the top
+and fires level; an air launch starts from its carrier; engines that can throttle hold the acceleration limit; and GTO missions
+are flown instead of refused. The way to orbit and the first altitude are inputs under Mission, Trajectory model. The shipped
+default now reaches its orbit with speed to spare. Of the 24 check vehicles 12 reach their orbit, against 2 before.
+
+*Checked against real vehicles* ([`ASCENT_VALIDATION.md`](ASCENT_VALIDATION.md)). Sixteen were flown on their published masses,
+where a perfect model would leave nothing over: Falcon 9 +24 m/s, Titan II +8, Ariane 5 +21, Pegasus +39, H-IIA +72, Vega C +97,
+Delta II +108; the rest is in the table, misses included. Nothing was tuned.
+
+*Simulated losses in the sizing*, off unless chosen: an ascent-loss method that sizes the vehicle with the losses of its own
+flight, and lets the split search see them ([`ASCENT.md`](ASCENT.md)).
+
+*Two ascent bugs fixed.* Vehicles with strap-ons had the core's back pressure charged twice. A first stage with no sea-level Isp
+was sized as if its vacuum thrust lifted it off: `example_htp_kerolox` reported 1.35 and flew 0.92, and is now sized
+for 1.35, with 31 % more thrust. A coast between stages no longer counts as a moment with no control authority.
+
+*Corrections to the cost model.* Development cost was wrong in six ways. The engine relation was given the mass of a whole cluster
 instead of one engine (2.4 times too much for six). The systems-engineering factor was 1.043 instead of 1.04 to the
 number of stages. The fairing and payload adapter were left out. Pressure-fed engines were never recognised. Euro and
 yen prices were treated as dollars. Zenit 3SL's GTO payload was listed as LEO. The default rocket goes from 47,500 to
@@ -26,8 +45,7 @@ settles Table 17.4: the book's copy of Koelle's Ariane 5 table is misprinted, an
 it could not say whether an area is over land. The calculation, its exports and its tests remain.
 
 *Documentation.* The manual, README and roadmap were checked against the program. Every default-design figure in the manual
-was measured again: many predated the optimised split being on. The manual now says that the shipped default, at that split,
-does not reach orbit in its own simulated ascent, because that ascent is one burn straight to 400 km.
+was measured again: many predated the optimised split being on.
 
 *Checked against work-years* ([`COST_VALIDATION.md`](COST_VALIDATION.md)). Koelle's worked examples reproduce. Saturn V
 development comes out 5 % high and Ariane 5 5 % low, partly by luck, since single parts are up to 41 % off. Cost per

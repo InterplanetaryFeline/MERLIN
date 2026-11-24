@@ -12,21 +12,22 @@ Reference throughout: Edberg & Costa, *Design of Rockets and Space Launch Vehicl
 
 ---
 
-## 1. Where the tool stands (v1.2.1, and the unreleased cost work)
+## 1. Where the tool stands (v1.2.1, and the unreleased cost and ascent work)
 
 It sizes an expendable multistage vehicle from a mission statement and closes the mass budget, then analyses
 that vehicle: a 3-DoF ascent trajectory and its optimisation, ground and flight loads with a user's own
 winds-aloft profile, shell stress and buckling, aerodynamics and stability, solid internal ballistics, payload
 environments, development, production and per-flight cost, performance envelopes, Monte-Carlo uncertainty, optimum
 staging, trade studies, multi-design comparison, and from the command line launcher families and pinned-architecture
-trades. Drag comes from the vehicle's own geometry, and the Trajectory tab says whether the orbit is reached. Propellants,
+trades. Drag comes from the vehicle's own geometry. The ascent is flown to orbit with linear tangent steering, cutoff, a coast and a
+restart, the tab says whether the orbit is reached, and the sizing can use the losses of that flight. Propellants,
 combinations and tank materials can be the user's own. A drop-zone study exists and its tab is hidden. It exports a report, an Excel
-workbook, DXF/STL/OBJ/3MF, and STEP through an optional geometry kernel. **106 engineering methods** are
+workbook, DXF/STL/OBJ/3MF, and STEP through an optional geometry kernel. **108 engineering methods** are
 registered with their book page, assumptions, limits and verification basis; **24 real
 vehicles** are in a validation set with the errors published rather than tuned away, and `docs/ACCURACY.md`
 attributes each error to its cause. The GUI is the primary interface, and a Windows app packages it.
 
-What it is **not**: nothing is fed back. The structure is never re-sized to carry the loads it is shown to
+What it is **not**: little is fed back (only the ascent losses, when asked for). The structure is never re-sized to carry the loads it is shown to
 need, the vehicle is never re-sized around the better ascent the optimiser finds, and no motor casing is
 re-sized for the chamber pressure its own grain would reach. It cannot represent a reusable vehicle at all.
 And its answers carry a measured median absolute error on lift-off mass of **13.2 % for all-liquid vehicles and
@@ -116,14 +117,12 @@ exists · **partial** = part of the chapter's method is in, with the gap named �
 |---|---|---|
 | 6.1–6.3 | Vertical/inclined/general flight with gravity, drag, thrust | **done in v0.6** |
 | 6.4 | LV aerodynamics (C_D, normal force, centre of pressure) | **done**: normal force in v0.7, drag from the geometry in v1.1 (not a book method) |
-| 6.5–6.6 | Getting to orbit; trajectory simulation | **done in v0.6**; the orbit check in v1.1 (M105). No coast-and-restart ascents |
+| 6.5–6.6 | Getting to orbit; trajectory simulation | **done in v0.6**; the orbit check in v1.1 (M105); flown to orbit in v1.3 (M108): linear tangent steering, cutoff, coast and restart, rotation, air launch |
 | 6.7 | Trajectory optimisation (gravity turn, pitch programme) | **done in v0.7** (M71–M73): the book's trade searched within the gravity-turn family, with the limits of Fig. 9.36. Not a free-profile optimal-control solution — no costate equations, no GPOPS-class solver |
-| 6.8–6.9 | Example launch profiles | *(n/a)* |
+| 6.8–6.9 | Example launch profiles | used in v1.3 to check the ascent (Pegasus, Saturn V; `docs/ASCENT_VALIDATION.md`) |
 
-**What is left here is a parking orbit, and then the feedback.** The ascent is one continuous burn straight to the target
-altitude. For the shipped default's lightest split that is 318 m/s short at 400 km; flown to 185 km and raised by a Hohmann
-pair the same vehicle has 117 m/s to spare. A coast and restart would change more verdicts than anything else here. After
-that, the trajectory is still a check after the fact: the vehicle is sized with a loss regression.
+**What is left here:** wind and lift, plane changes and apogee burns, engines shut down in flight, and an optimal-control
+steering law. The feedback into the sizing exists (M109) and is off by default.
 
 ### Chapter 7 — Structures and layout (pp. 407–462)
 
@@ -467,7 +466,7 @@ Written at v0.6, kept with what became of each; `docs/ACCURACY.md` has the curre
 |---|---|---|---|
 | **A1** | **Solved in v0.26 by `kibbey_medium`.** *Was:* **Solid-motor casing MER is 20–60 % heavy.** Eq. 8:18–8:19 with `k = 0.1154` gives `s = 0.1035`; real filament-wound motors are 0.08–0.09 (Vega P80 0.083, Zefiro 23 0.081, Orion 50S XL 0.091) | every solid stage in the validation set; substituting published ratios moves Vega from +25 % to +5 % | a modern composite-casing option alongside the book's, with its own source; properly, R7 |
 | **A2** | **Avionics MER steps 75 → 350 kg at 1 t payload**, which is heavy for a small launcher and contributes several per cent of GLOM on Electron-class vehicles | small-launcher cases in the validation set | a continuous small-vehicle avionics relation with a cited source |
-| **A3** | *(largely retired in v0.6: `--trajectory` computes the losses instead of fitting them, and the two agree to a few per cent on the default design's own split but differ by 21 % on its optimised one. The regression remains the default inside the sizing loop, because the trajectory needs a converged vehicle to fly.)* **Ascent-loss regressions are fitted to LEO ground launches** and are extrapolated for air launch, high-energy orbits and very small vehicles. The three book fits disagree by 302 m/s on the default case, which is ±6 % on GLOM | `docs/ERRATA_COMPLIANCE.md` §3 | R5: compute the losses instead of fitting them |
+| **A3** | *(retired in v1.3 for those who choose it: the simulated loss method sizes with the flown losses, M109. Before that, largely retired in v0.6: `--trajectory` computes the losses instead of fitting them, and the two agree to a few per cent on the default design's own split but differ by 21 % on its optimised one. The regression remains the default inside the sizing loop, because the trajectory needs a converged vehicle to fly.)* **Ascent-loss regressions are fitted to LEO ground launches** and are extrapolated for air launch, high-energy orbits and very small vehicles. The three book fits disagree by 302 m/s on the default case, which is ±6 % on GLOM | `docs/ERRATA_COMPLIANCE.md` §3 | R5: compute the losses instead of fitting them |
 | **A4** | **Pegasus XL is now −17.6 %.** *Was:* **Pegasus XL is +45 % on GLOM**, the worst case, after the errata's measured 322 m/s drag loss was applied | `docs/VALIDATION_REPORT.md` | partly A1 (three solid stages), partly A3 (air launch is outside the fit) |
 
 ---

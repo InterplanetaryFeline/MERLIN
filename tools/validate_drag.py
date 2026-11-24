@@ -315,10 +315,10 @@ def sized_design_losses() -> list:
                          nose_length_over_D=spec.fairing.nose_length_over_D,
                          converged=bool(g.converged and t.converged), published_drag_loss_mps=pub,
                          geometry=dict(drag_loss_mps=g.drag_loss_mps, max_q_Pa=g.max_q_Pa, max_q_t_s=g.max_q_t_s,
-                                       burnout_v_mps=g.burnout_v_mps,
+                                       margin_mps=g.margin_mps,
                                        peak_cd=(g.drag_table or {}).get("peak_cd")),
                          titan2=dict(drag_loss_mps=t.drag_loss_mps, max_q_Pa=t.max_q_Pa, max_q_t_s=t.max_q_t_s,
-                                     burnout_v_mps=t.burnout_v_mps)))
+                                     margin_mps=t.margin_mps)))
     return rows
 
 
@@ -399,7 +399,7 @@ def markdown(curves, s5, ap, sized) -> str:
               "from above."]
     L += ["", "## 3. The tool's sized designs, flown on both drag models", "",
           "| Design | Lift-off mass [t] | Diameter [m] | Nose L/D | Peak Cd | Drag loss, build-up [m/s] | "
-          "Drag loss, Titan II curve [m/s] | Published [m/s] | Burnout speed change [m/s] |",
+          "Drag loss, Titan II curve [m/s] | Published [m/s] | Change in speed in hand [m/s] |",
           "|---|---|---|---|---|---|---|---|---|"]
     for r in sized:
         g, t = r["geometry"], r["titan2"]
@@ -407,7 +407,7 @@ def markdown(curves, s5, ap, sized) -> str:
                  f"{r['glom_kg']/1e3:,.1f} | {r['diameter_m']:.2f} | {r['nose_length_over_D']:.2f} | "
                  f"{(g['peak_cd'] or float('nan')):.2f} | {g['drag_loss_mps']:.0f} | {t['drag_loss_mps']:.0f} | "
                  f"{'' if r['published_drag_loss_mps'] is None else format(r['published_drag_loss_mps'], '.0f')} | "
-                 f"{g['burnout_v_mps'] - t['burnout_v_mps']:+.0f} |")
+                 f"{g['margin_mps'] - t['margin_mps']:+.0f} |")
     L += ["", "Published drag losses, book Table 3.4 (p.180): "
           + ", ".join(f"{k} {v:.0f} m/s" for k, v in TABLE_3_4_DRAG_LOSS.items()) + ".", ""]
     return "\n".join(L)

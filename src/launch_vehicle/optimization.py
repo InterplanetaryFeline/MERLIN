@@ -68,6 +68,9 @@ def _sized(spec, fractions):
     """Size the vehicle for one delta-v allocation. Returns the result, or None if it would not size."""
     s = copy.deepcopy(spec)
     s.dv_mode, s.dv_fractions, s.dv_fixed = "fractions", list(fractions), None
+    flown = spec.mission.get("simulated_loss_map")
+    if flown is not None:
+        s.mission["simulated_loss_mps"] = flown(list(fractions))
     try:
         return size_vehicle(s, keep_history=False)
     except (SizingError, InputError):
@@ -203,6 +206,11 @@ def optimize_dv_split(spec, lo: float = 0.05, hi: float = 0.95, objective: str =
         raise InputError("nothing to optimise for a single stage")
     if objective not in OBJECTIVES:
         raise InputError(f"objective must be one of {OBJECTIVES}, not {objective!r}")
+    m = spec.mission
+    if m.get("loss_model") == "simulated" and m.get("simulated_loss_map") is None and m.get("simulated_loss_mps") is None:
+        from . import simulated_loss
+        return simulated_loss.optimise_split(spec, optimize_dv_split, lo=lo, hi=hi, objective=objective, samples=samples,
+                                             starts=starts, seed=seed, glom_cap_kg=glom_cap_kg)
     rng = np.random.default_rng(seed)
 
     # Maximising payload is only meaningful with something held fixed, and the honest thing to hold fixed is

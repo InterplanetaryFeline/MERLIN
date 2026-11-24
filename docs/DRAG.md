@@ -129,11 +129,11 @@ What this does and does not show:
 
 | | Published | Sized design, geometry drag | Sized design, Titan II curve |
 |---|---|---|---|
-| Saturn V | **40 m/s** (book Table 3.4, p.180); 46 m/s (p.174) | 31 m/s | 25 m/s |
+| Saturn V | **40 m/s** (book Table 3.4, p.180); 46 m/s (p.174) | 35 m/s | 28 m/s |
 
 Both are low; the build-up is nearer. The book's Table 3.4 also gives Atlas I 110, Delta 7925 136, Space Shuttle
-107 and Titan IV/Centaur 156 m/s. None of those could be compared: the tool has no design for three of them, and
-the Delta II 7920 design's ascent does not close on a gravity turn, so it reports no losses.
+107 and Titan IV/Centaur 156 m/s. The tool has no design for three of them. A Delta II 7920 flown on its published masses
+(`docs/ASCENT_VALIDATION.md`) loses 110 m/s, against 136 for the 7925.
 
 **Only one real rocket's flight was compared, and it is a 2,900-tonne one.** Flight timelines for small launchers
 were not collected. For the vehicles this tool is mainly for, the build-up is checked on its coefficient
@@ -141,24 +141,24 @@ were not collected. For the vehicles this tool is mainly for, the build-up is ch
 
 ## 5. What it means for a design
 
-| Design | Lift-off mass | Nose length / diameter | Peak Cd | Drag loss, geometry | Drag loss, Titan II curve | Burnout speed change |
+| Design | Lift-off mass | Nose length / diameter | Peak Cd | Drag loss, geometry | Drag loss, Titan II curve | Change in speed in hand |
 |---|---|---|---|---|---|---|
-| Saturn V (sized) | 2,826 t | 1.0 | 0.61 | 31 m/s | 25 m/s | −11 m/s |
-| Falcon 9 (sized) | 636 t | 1.2 | 0.72 | 31 m/s | 19 m/s | −22 m/s |
-| Default two-stage | 410 t | 1.0 | 0.72 | 45 m/s | 30 m/s | −25 m/s |
-| Electron (sized) | 16.8 t | 0.8 | 1.10 | 130 m/s | 57 m/s | −182 m/s |
-| Electron, nose lengthened to 2.0 | 16.9 t | 2.0 | 0.58 | 61 m/s | 56 m/s | −3 m/s |
+| Saturn V (sized) | 2,826 t | 1.0 | 0.61 | 35 m/s | 28 m/s | −14 m/s |
+| Falcon 9 (sized) | 636 t | 1.2 | 0.72 | 31 m/s | 19 m/s | −19 m/s |
+| Default two-stage | 410 t | 1.0 | 0.72 | 56 m/s | 36 m/s | −31 m/s |
+| Electron (sized) | 16.8 t | 0.8 | 1.10 | 197 m/s | 81 m/s | −178 m/s |
+| Electron, nose lengthened to 2.0 | 16.9 t | 2.0 | 0.58 | 90 m/s | 80 m/s | −13 m/s |
 
-* **Large vehicles barely notice.** The drag model moves the burnout speed by 10–25 m/s.
+* **Large vehicles barely notice.** The drag model moves the speed in hand by 14–31 m/s.
 * **Small vehicles notice a great deal, and the nose is why.** Drag loss scales with frontal area over mass, which
   is the book's own point on p.174. On the 17-tonne Electron design the build-up more than doubles the drag loss
-  and takes 182 m/s off the burnout speed.
+  and takes 178 m/s off the speed in hand.
 * **Most of that is the assumed nose.** The Electron design carries a nose 0.8 diameters long, marked `assumed`.
-  At 2.0 diameters, nearer a real fairing, the drag loss falls from 130 to 61 m/s. `fairing.nose_length_over_D` is
+  At 2.0 diameters, nearer a real fairing, the drag loss falls from 197 to 90 m/s. `fairing.nose_length_over_D` is
   an `assumed` input in nearly every shipped design, and until v1.1 it only affected the drawing and the fairing
   mass. **It now decides the drag of a small vehicle. Set it from your fairing.**
 
-The sizing loop is unaffected: it takes its ascent losses from the book's regression, not from the trajectory.
+The sizing loop is unaffected, unless the simulated loss method is chosen: it takes its ascent losses from the book's regression.
 The trajectory, the loads at max-q, the stability and control assessment, the payload environment, the
 pitch-programme optimisation and the drop zones all fly on the new drag and all move with it.
 

@@ -614,25 +614,10 @@ tells you which, and the library fills them as the design loads. Revert any one 
 number. On the shipped default, choosing Merlin 1D takes it from 397,246 kg to 376,450 kg; RD-180 to
 332,211 kg.
 
-**A GTO or GEO mission has no ascent trajectory at all.** The real vehicles fly those as burn-coast-restart
-— Atlas V 551 takes three Centaur burns around a 508 s and a 9,000 s coast, Delta IV Heavy three DCSS burns
-through a 117 x 851 nmi parking orbit — and this model burns every stage continuously to depletion, with no
-coast and no restart. Forcing a single-burn ascent onto such a mission produces a trajectory the vehicle
-would never fly, so the Trajectory tab says **"Ascent not simulated for this mission class"** and shows no
-figures. Nothing has failed in that case, and the mass and Δv results are unaffected — they never came from
-the trajectory. LEO and SSO missions are flown as before. Ariane 5 ECA is the case that shows this is about
-the flight profile and not the orbit: its ESC-A is *not* restartable (945 s nominal, one burn, direct ascent
-to GTO), and its ascent failed for a different reason — the tool gives it twice the real ESC-A propellant.
-
-**An analysis that did not converge says so first.** Several LEO check cases cannot have their ascent flown
-by the shooting method — Ariane 5 ECA, Delta IV Heavy, Atlas V 551, Delta II 7920, Vega, Scout G1 and
-Pegasus XL. The cause is the burn structure, not the strap-ons: Soyuz 2.1b flies with four of them and H-IIA
-with two, while Vega and Scout have none and still fail. See [`ACCURACY.md`](ACCURACY.md) §9.
-The Trajectory tab leads with a red banner in that case, carrying the shooting status, a
-warning that the figures and charts below describe the failed attempt rather than the vehicle, and a list of
-the analyses that produced nothing because they need a converged ascent (Stability is the usual one). Read
-those charts as a diagnosis. The sizing itself is unaffected: the lift-off mass comes from the loss
-regression, not from the trajectory.
+**An ascent that does not close says so first.** When no steering brings the vehicle level at its insertion altitude, the
+Trajectory tab leads with a red banner and the reason: usually an upper stage with too little thrust, which falls faster
+than it gains speed. The charts below then describe the failed attempt, and the analyses that need a flown ascent are
+listed as having produced nothing. The sizing is unaffected unless the ascent-loss method is *simulated* (§7.5).
 
 **Strap-on boosters are the other shape control**, directly under the stage count, for the same reason: a
 design either has a `boosters:` block or it does not, and the browser can only edit what the file contains.
@@ -803,56 +788,74 @@ Worked example: `examples/example_engine_database.yaml` (RD-180 first stage, RL1
 python -m launch_vehicle.main run --design config/default_design.yaml --out outputs --trajectory
 ```
 
-Everywhere else the ascent losses are a regression fitted to historical launches. This integrates the book's
-Table 6.1 equations of motion and computes them instead.
+Everywhere else the ascent losses are a regression fitted to historical launches. This flies the vehicle to its orbit and
+computes them instead. [`ASCENT.md`](ASCENT.md) explains the model and its choices, and
+[`ASCENT_VALIDATION.md`](ASCENT_VALIDATION.md) measures it against real vehicles.
 
-**What is integrated** (book Sec. 6.3–6.6):
+**What is integrated** (book Sec. 6.3-6.6, Table 6.1, with the rotation terms added), RK4:
 
 ```
-dv/dt     = (T cos α − D)/m − g sin γ            Eqs. 6:40 / 6:42
-v dγ/dt   = T sin α/m − (g − v²/(Rp+h)) cos γ    Eqs. 6:41 / 6:43
-dh/dt     = v sin γ        dx/dt = v cos γ/(1+h/Rp)
+dv/dt     = (T cos α cos ψ − D)/m − (g − ω²r) sin γ
+v dγ/dt   = T sin α cos ψ/m − (g − ω²r − v²/r) cos γ + 2ωv
+dh/dt     = v sin γ        dx/dt = v cos γ · Rp/(Rp+h)
 T         = ṁ·ve + (Pe − P∞)Ae                   Eq. 6:52
 D         = Cd·Sref·½ρv²                         Eq. 6:49
 ```
 
-RK4 at a 0.25 s step (the book's own example uses Euler and says so), step-size independent to 0.01 %.
+ω is the part of the Earth's rotation in the orbit plane, ω = ω_E cos i, so the flight starts with the launch site's speed
+and is never corrected for it afterwards. The site's speed *across* the orbit plane is removed by a constant yaw ψ of the
+thrust, charged to the steering loss.
 
-**Guidance** is the book's gravity turn (Sec. 6.4.7): a vertical rise, one pitch kick, then free flight — the
-pitch rate is zero only while γ is exactly 90°, so the kick is what starts the turn. The kick angle is found by
-the book's own method of shooting (Fig. 6.18), and it is *small*: 0.24° for the default design, and the book
-warns it "can be very small, much smaller than a degree". Above the atmosphere the vehicle hands over to a
-commanded flight path angle running linearly to zero at the end of the last burn, which is what real vehicles do
-and what the book's Shuttle example shows (§6.4.8); the thrust then sits at an angle to the velocity and the tool
-charges that as a steering loss rather than hiding it.
+**How it is flown:**
 
-**The output is the loss budget**, as Eq. 6:58 defines it:
+1. A vertical rise (10 s, and until 30 m/s), one small pitch kick, then the book's gravity turn (Sec. 6.4.7) with no angle
+   of attack while there is air.
+2. Above 60 km, or once the dynamic pressure has fallen to 1 kPa, **linear tangent steering** (Eq. 6:59): the tangent of the
+   thrust's pitch angle changes linearly with time. Its two constants are solved for the insertion altitude and a level
+   arrival.
+3. **The engine stops when the orbit is reached.** What is left in the tanks is reported as speed in hand.
+4. The pitch kick is searched for the flight that leaves the most speed in hand. Dynamic pressure over the design's
+   `max_dynamic_pressure_Pa` counts against a kick.
+
+**The way to orbit** (`mission.ascent_profile`, under Mission → Trajectory model) follows the book's advice (pp.372-373):
+
+| Choice | What is flown |
+|---|---|
+| `auto` (default) | Straight in up to 200 km. Higher: insertion at `mission.parking_altitude_m` (185 km) with the speed to coast up, and a second burn at the top. A high apogee (GTO, the Moon): a circular parking orbit and a second burn at the next equator crossing. |
+| `direct` | One burn, straight to the orbit's perigee. |
+| `parking` | Low first, then a second burn, whatever the altitude. |
+
+A **solid last stage** cannot stop or restart: it coasts to the top of the climb and fires once, level, and any surplus
+shows as a higher apogee. An **air launch** starts at the release speed, altitude and angle, and holds its thrust at one
+pitch angle until the hand-over; there is no wing lift in the model. An engine with a **minimum throttle** below 1 throttles
+to the design's `max_accel_g`. `max_q_alpha_Pa_deg` bounds the angle of attack wherever there is air.
+
+**The output is the loss budget** to the first cutoff, as Eq. 6:58 defines it, here for the default design with its own
+44/56 split:
 
 | Loss | Integral | Default design |
 |---|---|---|
-| gravity | ∫ g sin γ dt | 2,363 m/s |
-| drag | ∫ D/m dt | 40 m/s |
-| propulsion (back pressure) | ∫ Ae·P∞/m dt | 87 m/s |
-| steering | ∫ 2T sin²(α/2)/m dt | 104 m/s |
+| gravity | ∫ (g − ω²r) sin γ dt | 1,398 m/s |
+| drag | ∫ D/m dt | 56 m/s |
+| propulsion (back pressure) | ∫ Ae·P∞/m dt | 89 m/s |
+| steering | ∫ T(1 − cos α cos ψ)/m dt | 62 m/s |
 
-The four losses plus the burnout speed reconstruct the vacuum ideal Δv to better than 1e-6 m/s. That identity is
-the check that this is one integration decomposed, not four separate estimates, and the tests pin it.
+The four losses plus the speed gained reconstruct the vacuum ideal Δv to better than 1e-6 m/s. That identity is the check
+that this is one integration decomposed, and the tests pin it. To compare with the Δv budget, the tab also gives the losses
+of the whole flight on the budget's own footing (second burn included): 1,700 m/s here, against the 2,145 m/s the design was
+sized with. The difference, 445 m/s, is the speed in hand.
 
-**How good is it?** That depends on the split. With the default design's own 44/56 split, the integration's losses are
-2,229 m/s and the vehicle reaches orbit, close to the regression it is sized with. With the 35/65 split the optimiser
-picks for lowest mass, the integration gives 2,595 m/s against the regression's 2,151 m/s: 444 m/s more, well outside the
-regression's ±260 m/s RMS error. The default design as shipped is therefore **not in orbit** in its own Trajectory tab.
+**How good is it?** Sixteen real vehicles were flown on their published masses, thrusts, payloads and orbits. A real vehicle
+arrives with nothing to spare, so the speed in hand should be near zero: Falcon 9 +24 m/s, Titan II +8, Ariane 5 ECA +21,
+Pegasus +39, H-IIA +72, Vega C +97, Delta II +108. The misses are mostly vehicles whose published masses are incomplete.
+Nothing was tuned; see [`ASCENT_VALIDATION.md`](ASCENT_VALIDATION.md).
 
-Almost all of that difference is gravity loss, and it comes from **how the ascent is flown**: one continuous burn, straight
-up to the target altitude, levelling off at burnout. The regression hardly depends on the split (2,139 to 2,152 m/s from
-48/52 to 33/67); the simulated loss does, from 2,133 to 2,725 m/s, and grows with the orbit altitude. Real vehicles usually
-fly to a low parking orbit and raise it. Flown to 185 km and raised to 400 km by a Hohmann transfer (125 m/s), the same
-35/65 vehicle reaches orbit with 117 m/s to spare, where the direct climb is 318 m/s short. This model has no coast and
-restart, so it cannot fly that by itself. A higher upper-stage thrust-to-weight does not help (0.7 to 1.4 was tried), and
-neither do the steering limits.
-
-On Titan II the computed gravity loss is 1,360 m/s and drag 49 m/s, both inside the book's Table 3.4
-ranges (1,150–1,534 and 40–156 m/s), with max-q at 79 s — the book says 50–90 s.
+**Sizing with the simulated losses.** Set *Ascent loss method* to *From this vehicle's own simulated flight*
+(`mission.losses.model: simulated`). The vehicle is sized, flown, sized again with the losses it had, and so on until the two
+agree, usually in three flights. It then reaches its orbit with only its margin and allowance lines left. It is off unless
+you choose it, adds two or three seconds to a sizing and ten to thirty to a split optimisation, and refuses a vehicle whose
+ascent does not close. The optimised split then follows what can actually be flown: 45/55 on the default design instead of
+35/65.
 
 **Drag** defaults to `geometry`: the drag coefficient is built up from the vehicle's own shape - skin friction,
 pressure drag on the nose and on every flare, boattail drag and base drag, with the strap-ons added while they are
@@ -864,18 +867,15 @@ them**: `fairing.nose_length_over_D` sets the cone angle, a short nose can doubl
 most shipped designs carry it as an assumption - set it from your fairing. The Trajectory tab and the report show
 the build-up term by term against Mach number.
 
-**Did it reach orbit?** The Trajectory tab opens with the answer. The integration flies on a non-rotating Earth,
-so its burnout speed is relative to the launch site; the site's speed is added back exactly as the delta-v budget
-removed it, and the orbit the burnout state is on follows from two-body energy and angular momentum. Its perigee
-and apogee are shown beside the ones you asked for, with one of three verdicts: *reached*, *in orbit but short of
-the target*, or *not in orbit*. Two thresholds decide the verdict and both are assumptions, not standards: an apsis
-counts as reached within the larger of 10 km and 2 % below its target, and a perigee under 100 km is not an orbit.
-An apogee well above the target means the vehicle arrives with speed to spare - there is no engine cutoff on
-reaching the orbit in this model. The check is not made when `last_ascent_stage` stops the ascent early.
+**Did it reach orbit?** The Trajectory tab opens with the answer. The inertial state at the end of the last burn gives the
+orbit, from two-body energy and angular momentum. Its perigee and apogee are shown beside the ones you asked for, with one
+of three verdicts: *reached*, *in orbit but short of the target*, or *not in orbit*. Two thresholds decide the verdict and
+both are assumptions, not standards: an apsis counts as reached within the larger of 10 km and 2 % below its target, and a
+perigee under 100 km is not an orbit. The check is not made when `last_ascent_stage` stops the ascent early.
 
 **Events timeline.** Below it, the ascent in time order: lift-off, pitch kick, Mach 1, maximum dynamic pressure,
 peak acceleration, and every ignition, burnout and jettison, with altitude, downrange, speed, Mach number, flight
-path angle, dynamic pressure and mass.
+path angle, dynamic pressure and mass. A coast and second burn are in it too.
 
 The book's Titan II curve is still available as `book_titan2`: Fig. 6.13 prints it as analytic equations (exact,
 not read off a plot), and until v1.1 every design was flown on it whatever its shape. `table` flies your own
@@ -889,16 +889,15 @@ temperature, so it cannot give a speed of sound, and the book's own Cd curves ar
 of sound therefore comes from the US Standard Atmosphere 1976, marked supplementary. `us76` uses that standard
 throughout.
 
-**What it will not fly.** A stage that ignites below about T/W 0.4 cannot hold a flight path on a gravity turn:
-gravity turns it down faster than its thrust can turn it back up. Delta II's second stage (T/W 0.25), Centaur and
-ESC-A are all in that class, and they fly optimised closed-loop ascents this model does not have. The tool
-reports which of the two is at fault — the guidance model, not the vehicle — rather than producing a loss budget
-for a trajectory that never reached orbit. A vehicle whose upper stage restarts after a coast needs
-`mission.last_ascent_stage` so the ascent stops at insertion (Saturn V: 2).
+**What it cannot fly** is a stage that falls faster than it gains speed. Several check vehicles *as this tool sizes them* are
+in that class (Delta II, Atlas V 551, Ariane 64, Ariane 5 ECA: second stages of 12 to 30 minutes at a thrust-to-weight of 0.16
+to 0.27). Their real counterparts, flown on their published masses, reach orbit, so the fault is in the sizing, and the
+message says what to change. `mission.last_ascent_stage` ends the ascent with an earlier stage, if you want only that.
 
-Also not modelled: wind, lift, attitude dynamics, plane changes, throttling laws, and any optimisation. A gravity
-turn is not the optimal ascent, so these losses are the cost of *this* trajectory and an upper bound on what an
-optimised one would pay.
+**Not modelled:** wind, lift, attitude dynamics, plane changes, an apogee burn for a geostationary orbit, engines shut down
+in flight, and propellant lost between two burns. One kick and one linear tangent arc is close to the best a vehicle can do
+and is not an optimal-control solution. A liquid last stage is assumed able to restart once; use `direct` for one that
+cannot.
 
 ### 7.6 Trade studies and design comparison in the GUI
 
@@ -983,14 +982,14 @@ F_gimbal from ΣM about the CM = 0        n_z = F_lat/(m·g0)      n_x = (T−D)
 ```
 
 Both **max-q** and **max-qα** are computed, because the book states outright that which of the two governs
-cannot be known before a trajectory exists (p.572). On the default design max-qα comes 4 s earlier and bends the
-vehicle 15 % harder.
+cannot be known before a trajectory exists (p.572). On the default design max-qα comes 7 s earlier and bends the
+vehicle 29 % harder.
 
 **Two more cases, for the same reason.** *Lift-off* is the same wind with the vehicle accelerating at its
 lift-off thrust-to-weight: identical bending, axial load scaled by n_x. *Maximum axial acceleration* is the
 instant of greatest n_x, which arrives at the end of a burn. Whether it governs the axial load is then a result rather than an assumption — and on the default design
-it does **not**: at 5.1 g the stage is nearly empty, so there is little mass left above a station to compress
-it, and max-q's 2.0 g acting on a much heavier vehicle wins. The report names which case governs axial load and which
+it does **not**: at 4.6 g the stage is nearly empty, so there is little mass left above a station to compress
+it, and max-q's 2.1 g acting on a much heavier vehicle wins. The report names which case governs axial load and which
 governs bending.
 
 **Three self-checks** run on every case and are printed with it. On the ground, the axial curve at the base must
@@ -1060,15 +1059,12 @@ trade, in §6.10:
 > A shallow climb produces significant drag loss, higher aerodynamic loads, or even overheating, so don't go
 > shallow or level off too soon.
 
-Three things in the guidance are free: how long the vehicle rises vertically, the altitude at which the gravity
-turn hands over to commanded steering, and how much angle of attack that steering may use. The pitch kick is
-*not* free — it is solved by shooting inside every evaluation, so every candidate reaches the target altitude
-exactly rather than being penalised for missing it. The objective is burnout speed, which for a fixed vehicle
-is the same as minimising the losses.
+Every flight already solves its steering and searches its pitch kick (§7.5). Two things are left: how long the vehicle rises
+vertically, and the altitude at which the gravity turn hands over to steering. Both are searched, with the vehicle's limits
+enforced. The objective is the speed in hand at the end.
 
-**The optimum sits on a constraint, never at a stationary point.** Steering over earlier always trades gravity
-loss for steering loss at a profit, so nothing in the objective stops it. What stops it is the vehicle: dynamic pressure, the product qα
-that sets air loads, and axial acceleration. Those limits live in the design's `constraints` block:
+**A limit usually decides the answer.** Steering over earlier trades gravity loss for steering loss at a profit almost all the
+way down. What stops it is the vehicle: dynamic pressure, the product qα that sets air loads, and axial acceleration. Those limits live in the design's `constraints` block:
 
 | Key | Default | Where it comes from |
 |---|---|---|
@@ -1082,16 +1078,12 @@ at 35.2 kPa, the Shuttle's high-q profile at 33.3 kPa, and Pegasus at 66.9 kPa, 
 to cost 322 m/s of drag loss. Set them to your vehicle's numbers. With none set, the search runs to the edge of
 its box and the report says the result means nothing.
 
-**What the answer is worth** is priced in payload: the vehicle is flown heavier and heavier, everything else
-frozen, until burnout speed just meets what the orbit needs. On the default design the optimised programme is
-worth +43 m/s of burnout speed, with the optimum pinned to the qα limit; that vehicle does not reach its orbit either
-way (§7.5), so it has no payload to price. That is the value
-on the vehicle *as built* — the sizing loop still uses the regression losses, so nothing here is fed back into
-the design.
+**What the answer is worth** is priced in payload: the vehicle is flown heavier and heavier, everything else frozen, until no
+speed is left over. On the default design's own 44/56 split the optimised programme is worth +41 m/s and +243 kg of payload,
+with the optimum pinned to the qα limit and the hand-over at 14 km. That is the value on the vehicle *as built*.
 
-**One result worth knowing before you tune anything.** With the kick re-solved to hit the same altitude, the
-vertical rise time barely matters: 5 s and 20 s differ by under 5 m/s of burnout speed, because the kick simply
-moves to compensate. The hand-over altitude is the parameter that actually does something.
+**One result worth knowing before you tune anything.** With the kick searched again, the vertical rise time barely matters;
+the kick simply moves to compensate. The hand-over altitude is the parameter that actually does something.
 
 ### 7.12 Static stability and control authority
 
@@ -1263,7 +1255,7 @@ dynamic part comes from a coupled-loads analysis of the vehicle and spacecraft t
 modes this tool does not compute. The increments used are taken from those two real guides and are labelled as
 stand-ins on every row.
 
-The default design comes out at 7.7 g axial (stage-2 burnout) and 2.0 g lateral, inside the book's
+The default design comes out at 5.6 g axial (stage-1 burnout) and 2.0 g lateral, inside the book's
 expectation of 4–8 g and 1.5–3 g for a preliminary design.
 
 **What a real guide has that this does not:** the acoustic and shock specification (Chapter 11 describes
@@ -1882,7 +1874,7 @@ res = size_vehicle(spec)
 print(res.glom_kg, res.status, [s.structural_factor_s for s in res.stages])
 ```
 
-Modules in `src/launch_vehicle/`: `aerodynamics` · `architecture` · `ascent_opt` · `atmosphere` · `boosters` · `cad_export` · `cad_kernel` · `charts` · `config_io` · `control` · `convergence` · `cost` · `debris` · `delta_v` · `desktop` · `drag_buildup` · `engine_db` · `engine_geometry` · `families` · `geodesy` · `geometry` · `gui_meta` · `hazard` · `inertia` · `launch_sites` · `loads` · `main` · `mass_budget` · `mass_properties` · `method_register` · `models` · `optimization` · `orbit` · `paths` · `payload_env` · `performance` · `propellant_db` · `propulsion` · `reliability` · `report` · `reporting` · `schematic_2d` · `sensitivity` · `solid_inert` · `solid_motor` · `stage_count` · `stage_type` · `staging` · `strap_ons` · `structure` · `studies` · `tank_sizing` · `trajectory` · `uncertainty` · `units` · `user_library` · `validation` · `vehicle_import` · `webgui` · `wind`.
+Modules in `src/launch_vehicle/`: `aerodynamics` · `architecture` · `ascent` · `ascent_opt` · `atmosphere` · `boosters` · `cad_export` · `cad_kernel` · `charts` · `config_io` · `control` · `convergence` · `cost` · `debris` · `delta_v` · `desktop` · `drag_buildup` · `engine_db` · `engine_geometry` · `families` · `geodesy` · `geometry` · `gui_meta` · `hazard` · `inertia` · `launch_sites` · `loads` · `main` · `mass_budget` · `mass_properties` · `method_register` · `models` · `optimization` · `orbit` · `paths` · `payload_env` · `performance` · `propellant_db` · `propulsion` · `reliability` · `report` · `reporting` · `schematic_2d` · `sensitivity` · `solid_inert` · `solid_motor` · `stage_count` · `stage_type` · `staging` · `strap_ons` · `structure` · `studies` · `tank_sizing` · `trajectory` · `uncertainty` · `units` · `user_library` · `validation` · `vehicle_import` · `webgui` · `wind`.
 
 **What it does not do:**
 
@@ -1890,7 +1882,8 @@ Modules in `src/launch_vehicle/`: `aerodynamics` · `architecture` · `ascent_op
   not re-sized around the better ascent the optimiser finds, and no motor casing is re-sized for the chamber
   pressure its own grain reaches.
 * **Reusable vehicles** cannot be represented, and there is no reuse economics.
-* **The lightest vehicle may not reach orbit** in its own simulated ascent (§7.5). The sizing does not check it.
+* **The lightest vehicle may not be one that flies well.** With the book's loss methods the split search does not see the
+  ascent. The Trajectory tab shows the result; the simulated loss method (§7.5) puts it in the search.
 * **Drag is an estimate** from the outside shape ([`DRAG.md`](DRAG.md)).
 * **Shared-core families are biased.** The sizer never carries a core oversized for the mission being flown, so
   a family's smaller variants come out too light when sized alone, and over-predict payload when the core is

@@ -161,7 +161,9 @@ def test_the_trajectory_looks_like_the_book_says_a_good_one_should():
 
 def test_the_altitude_and_speed_histories_are_monotone_where_they_should_be():
     _, t = flown()
-    assert all(b >= a - 1.0 for a, b in zip(t.h_m, t.h_m[1:])), "the vehicle should not descend during ascent"
+    up = [h for h, s in zip(t.h_m, t.t_s) if s <= 200.0]
+    assert all(b >= a - 1.0 for a, b in zip(up, up[1:])), "the vehicle climbs through the first stage and beyond"
+    assert min(h for h, s in zip(t.h_m, t.t_s) if s > 300.0) > 150e3, "lofted or not, it stays out of the air"
     assert t.v_mps[0] == 0.0 and t.burnout_v_mps > 5000.0
 
 
@@ -205,8 +207,10 @@ def test_a_bigger_kick_gives_a_lower_flatter_trajectory():
 
 
 def test_shooting_hits_the_target_altitude():
-    r, t = flown()
-    assert abs(t.burnout_h_m - r.spec.mission["perigee_altitude_m"]) < 1e4
+    r, _ = flown()
+    out = tj.shoot_for_altitude(tj.ascent_vehicle_from_result(r), 200e3, dt=0.5)
+    assert out.converged, out.status
+    assert abs(out.burnout_h_m - 200e3) < 1e4
 
 
 def test_an_unreachable_altitude_is_reported_not_faked():
@@ -229,18 +233,8 @@ def test_titan_ii_losses_land_inside_the_books_own_ranges():
     assert 50.0 <= t.max_q_t_s <= 90.0, t.max_q_t_s
 
 
-def test_a_vehicle_whose_upper_stage_cannot_hold_a_flight_path_is_diagnosed():
-    """Delta II's second stage ignites at T/W ~ 0.25. A gravity turn cannot fly that, and the tool has to say
-    which of the two is at fault - the guidance model, not the vehicle."""
-    r = size_vehicle(load_design(os.path.join(ROOT, "validation", "delta2_7920.yaml"), ASSUMP))
-    t = tj.fly_design(r, dt=0.5)
-    assert not t.converged
-    assert any("T/W" in n for n in t.notes), t.notes
-
-
 def test_a_restarting_upper_stage_can_be_stopped_at_insertion():
-    """Saturn V's third stage burns twice; flying both back to back is not an ascent. `last_ascent_stage`
-    ends the integration at parking-orbit insertion."""
+    """`last_ascent_stage` ends the ascent with that stage, whatever the ones above it would have done."""
     r = size_vehicle(load_design(os.path.join(ROOT, "validation", "saturn5.yaml"), ASSUMP))
     veh = tj.ascent_vehicle_from_result(r, last_ascent_stage=2)
     assert all("stage 3" not in b.name for b in veh.burns)
@@ -259,53 +253,23 @@ def test_the_vehicle_built_from_a_result_conserves_its_mass_budget():
     assert m == pytest.approx(expect, rel=1e-6), (m, expect)
 
 
-# ------------------------------------------------------------------ mission classes this model cannot fly
-def test_a_gto_mission_is_not_flown_at_all_rather_than_flown_badly():
-    """A failed ascent and an unmodellable one look identical in a chart and mean opposite things.
-
-    The real GTO vehicles fly burn-coast-restart: Atlas V 551 uses three Centaur burns around a 508 s and a
-    9,000 s coast (ULA MUOS-1 booklet), Delta IV Heavy three DCSS burns through a 117 x 851 nmi parking orbit
-    (ULA DSP-23). This model burns every stage continuously to depletion, so it builds a 1,300-1,900 s
-    upper-stage burn that no single pitch programme can fly to a 250 km burnout. Reporting that attempt as a
-    trajectory is what made Ariane 5 ECA look like a vehicle that cannot reach orbit.
-    """
-    res = size_vehicle(load_design("validation/ariane5_eca.yaml", ASSUMP))
-    assert res.spec.mission["orbit_type"] == "GTO", "this check case is the GTO one"
-    tr = tj.fly_design(res)
-    assert tr.attempted is False, "a GTO ascent must not be attempted"
-    assert tr.converged is False
-    assert not tr.t_s, "an unattempted ascent carries no history to plot"
-    assert "not attempted" in tr.status
-    # and the refusal has to be about the PROFILE, so it must say what the real vehicles do instead
-    assert "restart" in tr.status or "coast" in tr.status
-
-
-def test_a_leo_mission_is_still_flown_normally():
-    """The gate is on the mission class, not a blanket switch-off."""
+# ------------------------------------------------------------------ every mission class is flown
+def test_a_leo_mission_is_flown():
     for name in ("falcon9", "electron"):
         res = size_vehicle(load_design(f"validation/{name}.yaml", ASSUMP))
         tr = tj.fly_design(res)
-        assert tr.attempted is True, f"{name} is a LEO mission and must still be flown"
-        assert tr.converged is True, f"{name} used to fly and must still: {tr.status}"
+        assert tr.attempted is True and tr.converged is True, f"{name}: {tr.status}"
         assert tr.t_s, "a flown ascent has a history"
 
 
-def test_forcing_an_unflyable_mission_is_possible_but_not_the_default():
-    """Studying the refusal itself must stay possible, or the limitation cannot be investigated."""
+def test_a_gto_mission_is_attempted_like_any_other():
+    """It was refused until the model could coast and restart. Ariane 5 ECA as this tool sizes it carries twice the real
+    ESC-A propellant, and its ascent still does not close - but that is now a finding about the vehicle."""
     res = size_vehicle(load_design("validation/ariane5_eca.yaml", ASSUMP))
-    forced = tj.fly_design(res, force=True)
-    assert forced.attempted is True, "force=True must actually attempt it"
-    assert forced.converged is False, "and it still must not converge, which is the whole point"
-
-
-def test_ascent_supported_names_the_orbit_types_it_refuses():
-    spec = size_vehicle(load_design("validation/falcon9.yaml", ASSUMP)).spec
-    ok, why = tj.ascent_supported(spec)
-    assert ok and not why
-    for t in tj.UNFLOWN_ORBIT_TYPES:
-        spec.mission["orbit_type"] = t
-        ok, why = tj.ascent_supported(spec)
-        assert not ok and t in why, f"{t} should be refused and named in the reason"
+    assert res.spec.mission["orbit_type"] == "GTO"
+    tr = tj.fly_design(res)
+    assert tr.attempted is True and tr.converged is False and tr.profile == "parking"
+    assert any("thrust-to-weight" in n for n in tr.notes), tr.notes
 
 
 def test_the_vertical_rise_is_vertical_until_the_kick():

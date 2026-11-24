@@ -289,6 +289,19 @@ def design_inputs(design_path, assump_path, describe: bool = False):
     # shipped design states it. Without a row for it, choosing that method produced an error naming an input
     # the page had no field for.
     declared = {it["path"] for it in items}
+    # The way to orbit of the simulated ascent: newer than most design files, so it gets a row whether or not the
+    # file has one, next to the other trajectory settings.
+    for key, val, units in (("parking_altitude_m", None, "m"), ("ascent_profile", "auto", "-")):
+        path = f"mission.{key}"
+        if path in declared:
+            continue
+        meta = _creatable_meta(["mission", key])
+        row = {"path": path, "value": val, "units": units, "description": meta["d"],
+               "source": "Not stated in the design file; " + ("automatic" if val else "185 km") + " is the default",
+               "provenance": "assumed", "group": _group_of(path), "type": "text" if val else "null", "required": False}
+        at = max((i for i, it in enumerate(items) if it["path"] in ("mission.vertical_rise_s", "mission.atmosphere_model")),
+                 default=max((i for i, it in enumerate(items) if it["path"].startswith("mission.")), default=-1))
+        items.insert(at + 1, row) if at >= 0 else items.append(row)
     for s in spec.stages:
         ix = s.index - 1
         path = f"stages[{ix}].engine.cstar_mps"
@@ -493,9 +506,7 @@ def _study_summary(extras):
         # `status` says WHY, and a trajectory that did not converge needs it: without it the tab showed a
         # vehicle flying up and crashing - burnout altitude -0.22 km, max-q 4,833 kPa - as though those were
         # results, with "Converged: false" as one unremarkable table row among four.
-        # `attempted` is a separate question from `converged`: an ascent this model cannot represent at all
-        # (GTO and above, which the real vehicles fly as burn-coast-restart) carries no figures to show, so
-        # the tab must say "not attempted" rather than report a burnout altitude of zero as a measurement.
+        # `attempted` is a separate question from `converged`: an ascent that was not tried carries no figures.
         att = bool(getattr(tr, "attempted", True))
         out["trajectory"] = {"converged": bool(getattr(tr, "converged", False)),
                              "attempted": att,
@@ -504,7 +515,18 @@ def _study_summary(extras):
                                           if att else None,
                              "burnout_h_km": (getattr(tr, "burnout_h_m", 0.0) / 1e3) if att else None,
                              "burnout_v_mps": getattr(tr, "burnout_v_mps", 0.0) if att else None,
-                             "drag_loss_mps": getattr(tr, "drag_loss_mps", 0.0) if att else None}
+                             "gravity_loss_mps": getattr(tr, "gravity_loss_mps", 0.0) if att else None,
+                             "drag_loss_mps": getattr(tr, "drag_loss_mps", 0.0) if att else None,
+                             "propulsion_loss_mps": getattr(tr, "propulsion_loss_mps", 0.0) if att else None,
+                             "steering_loss_mps": getattr(tr, "steering_loss_mps", 0.0) if att else None}
+        if att and getattr(tr, "profile", ""):
+            out["trajectory"]["profile_why"] = tr.profile_why
+            if tr.converged:
+                out["trajectory"].update(
+                    margin_mps=tr.margin_mps, propellant_left_kg=tr.propellant_left_kg,
+                    second_burn_dv_mps=tr.second_burn_dv_mps or None,
+                    equivalent_loss_mps=tr.equivalent_loss_mps, budget_loss_mps=tr.budget_loss_mps or None)
+            out["trajectory"]["notes"] = [n for n in tr.notes if not n.startswith(("drag ", "reference area", "atmosphere"))]
         ins = getattr(tr, "insertion", None)
         if ins:
             # a dict and a list: the generic quantity table skips both and the tab draws them itself
@@ -1342,7 +1364,7 @@ class Handler(BaseHTTPRequestHandler):
                     res = size_vehicle(spec)
                     from . import aerodynamics as _aero
                     traj = _tj.fly_design(res, drag=_aero.model_from_config(
-                        spec.mission.get("aerodynamics"), root=os.path.dirname(p)))
+                        spec.mission.get("aerodynamics"), root=os.path.dirname(p)), **_tj.flight_options(spec))
                     if not traj.converged:
                         # An ascent that did not close has no trustworthy separation states, and inventing drop
                         # zones from it would be the worst kind of plausible output.
@@ -1383,7 +1405,7 @@ class Handler(BaseHTTPRequestHandler):
                     res = size_vehicle(spec)
                     from . import aerodynamics as _aero
                     traj = _tj.fly_design(res, drag=_aero.model_from_config(
-                        spec.mission.get("aerodynamics"), root=os.path.dirname(p)))
+                        spec.mission.get("aerodynamics"), root=os.path.dirname(p)), **_tj.flight_options(spec))
                     if not traj.converged:
                         return self._send(400, {"error": "the ascent did not converge, so there are no drop "
                                                          "zones to export", "trajectory_status": traj.status})

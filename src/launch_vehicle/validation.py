@@ -270,16 +270,23 @@ def validate_spec(spec) -> list:
                      f"{f.diameter_m:.2f} m fairing", field="fairing.diameter_m", options=opts)
     if spec.paf_method not in ("mer", "fraction", "auto"):
         E("PAFMETH", "vehicle.payload_adapter_method must be mer, fraction or auto")
-    if spec.mission.get("loss_model") not in ("book_penalty", "book_k1k2", "book_simple", "user"):
+    if spec.mission.get("loss_model") not in ("book_penalty", "book_k1k2", "book_simple", "simulated", "user"):
         E("LOSSMODEL", f"unknown loss model '{spec.mission.get('loss_model')}' "
-                       "(book_penalty | book_k1k2 | book_simple | user)")
+                       "(book_penalty | book_k1k2 | book_simple | simulated | user)")
+    if (spec.mission.get("ascent_profile") or "auto") not in ("auto", "direct", "parking"):
+        E("ASCPROFILE", f"unknown way to orbit '{spec.mission.get('ascent_profile')}' (auto | direct | parking)",
+          field="mission.ascent_profile")
+    park = spec.mission.get("parking_altitude_m")
+    if park is not None and not 100e3 <= park <= 2000e3:
+        E("ASCPARK", f"the altitude of the first insertion is {park/1e3:,.0f} km; it must be between 100 and 2,000 km",
+          field="mission.parking_altitude_m")
     if spec.mission.get("ascent_time_override_s"):
         W("ASCTIME", f"ascent time for the loss regression overridden to {spec.mission['ascent_time_override_s']:.0f} s "
                      "instead of the sum of the sized burn times (use only when a stage burns after a long coast)")
     al = spec.mission.get("air_launch")
     if al:
-        if spec.mission.get("loss_model") != "user":
-            E("AIRLAUNCH", "air-launched vehicles must use loss_model 'user': the book's loss regression "
+        if spec.mission.get("loss_model") not in ("user", "simulated"):
+            E("AIRLAUNCH", "air-launched vehicles must use loss_model 'user' or 'simulated': the book's loss regression "
                            "(Eq. 3:37) was fitted to ground launches")
         for k in ("release_speed_mps", "release_altitude_m"):
             if al.get(k) is None: E("AIRLAUNCH", f"mission.air_launch needs {k}")

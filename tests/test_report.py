@@ -175,7 +175,7 @@ def test_the_limitations_section_tells_the_truth_about_the_trajectory():
     assert "A trajectory was flown" in with_traj
     assert "No trajectory was flown" not in with_traj
     # the caveats that survive a flown trajectory must still be stated
-    assert "sized" in with_traj and "not part of the convergence loop" in with_traj
+    assert "sized" in with_traj and "a check after the fact" in with_traj
     assert "upper bound" in with_traj
 
     flown.converged = False
