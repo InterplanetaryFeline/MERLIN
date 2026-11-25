@@ -63,6 +63,41 @@ def _message_box(text: str) -> None:
         print(text, file=sys.stderr)
 
 
+#: Microsoft's registry keys for the WebView2 Evergreen runtime
+_WEBVIEW2 = r"Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}"
+
+
+def webview2_installed() -> bool | None:
+    """Whether the WebView2 runtime is registered on this machine; None off Windows, where it is not asked."""
+    if os.name != "nt":
+        return None
+    import winreg                                                   # noqa: PLC0415 - Windows only
+    for hive, key in ((winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\WOW6432Node\\" + _WEBVIEW2),
+                      (winreg.HKEY_LOCAL_MACHINE, "SOFTWARE\\" + _WEBVIEW2),
+                      (winreg.HKEY_CURRENT_USER, "Software\\" + _WEBVIEW2)):
+        try:
+            with winreg.OpenKey(hive, key) as k:
+                if str(winreg.QueryValueEx(k, "pv")[0]) not in ("", "0.0.0.0"):
+                    return True
+        except OSError:
+            continue
+    return False
+
+
+def window_error_text(ex: BaseException, webview2: bool | None, log_path: str) -> str:
+    """What to tell the user when the window does not open: the likely cause, and the real error under it."""
+    if "Python.Runtime" in str(ex):
+        why = ("Windows is blocking part of MERLIN, usually because the files are marked as downloaded from the internet.\n\n"
+               "Delete this folder, right-click the zip you downloaded, choose Properties, tick Unblock, and extract it again. "
+               "If Unblock is not offered, your organisation may be blocking it: ask your IT department.")
+    elif webview2 is False:
+        why = ("It needs the Microsoft Edge WebView2 Runtime, which was not found on this computer. It can be installed from "
+               "Microsoft's WebView2 page.")
+    else:
+        why = "The cause is not one MERLIN recognises."
+    return f"MERLIN could not open its window.\n\n{why}\n\nDetails: {ex}\nLog: {log_path}"
+
+
 def main() -> int:
     workdir = os.path.join(ROOT, "outputs", "gui")
     redirect_missing_streams(os.path.join(workdir, "merlin.log"))
@@ -91,9 +126,7 @@ def main() -> int:
         webview.start(gui="edgechromium" if os.name == "nt" else None)
     except Exception as ex:                                         # noqa: BLE001 - shown, not hidden
         print(f"window failed: {type(ex).__name__}: {ex}")
-        _message_box("MERLIN could not open its window. It needs Microsoft Edge WebView2, which is part of "
-                     "Windows 11 and most Windows 10 systems; it can be installed from Microsoft's WebView2 "
-                     f"page.\n\nDetails: {ex}")
+        _message_box(window_error_text(ex, webview2_installed(), os.path.join(workdir, "merlin.log")))
         return 1
     return 0
 

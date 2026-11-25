@@ -12,7 +12,7 @@ Reference throughout: Edberg & Costa, *Design of Rockets and Space Launch Vehicl
 
 ---
 
-## 1. Where the tool stands (v1.3.0)
+## 1. Where the tool stands (v1.3.1)
 
 It sizes an expendable multistage vehicle from a mission statement and closes the mass budget, then analyses
 that vehicle: a 3-DoF ascent trajectory and its optimisation, ground and flight loads with a user's own

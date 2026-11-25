@@ -73,6 +73,24 @@ def third_party_licences(dest: str) -> list:
     return missing
 
 
+#: .NET refuses to load a library that carries Windows' downloaded-from-the-internet mark, and Explorer puts that mark on
+#: every file it extracts from a downloaded zip. This is .NET's own setting for an application that trusts its libraries.
+EXE_CONFIG = """<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <runtime>
+    <loadFromRemoteSources enabled="true"/>
+  </runtime>
+</configuration>
+"""
+
+
+def write_exe_config(app_dir: str) -> str:
+    out = os.path.join(app_dir, "MERLIN.exe.config")
+    with open(out, "w", encoding="utf-8", newline="\n") as fh:
+        fh.write(EXE_CONFIG)
+    return out
+
+
 def version() -> str:
     import re
     with open(os.path.join(ROOT, "pyproject.toml"), encoding="utf-8") as fh:
@@ -91,7 +109,7 @@ def make_zip(app_dir: str, out: str) -> str:
                 z.write(full, os.path.join("MERLIN", os.path.relpath(full, app_dir)))
     with zipfile.ZipFile(out) as z:                       # read it back: a corrupt archive is worse than none
         bad = z.testzip()
-        if bad or "MERLIN/MERLIN.exe" not in z.namelist():
+        if bad or not {"MERLIN/MERLIN.exe", "MERLIN/MERLIN.exe.config"} <= set(z.namelist()):
             raise RuntimeError(f"the archive {out} is not usable (bad member: {bad})")
     return out
 
@@ -138,6 +156,7 @@ def main(argv=None) -> int:
         print("BUILD IS NOT USABLE: these libraries are not in the bundle: " + ", ".join(absent))
         return 1
 
+    write_exe_config(APP)
     for d in DATA_DIRS:
         shutil.copytree(os.path.join(ROOT, d), os.path.join(APP, d), dirs_exist_ok=True,
                         ignore=shutil.ignore_patterns("__pycache__"))

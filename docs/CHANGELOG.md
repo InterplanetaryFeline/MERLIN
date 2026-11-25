@@ -3,6 +3,12 @@
 Newest first. Entries are kept as written at each release, so what they say about the tool's limits and numbers
 was true of that version. [`ACCURACY.md`](ACCURACY.md) has the current measurements.
 
+**What changed in v1.3.1 - the downloaded app opens**
+
+*The app failed to open on a computer where the zip was downloaded and extracted with Explorer*, and said it needed WebView2.
+Windows marks downloaded files, and .NET will not load a marked library. The app now ships .NET's setting that allows its own
+(`MERLIN.exe.config`), and the error message names the cause instead of always blaming WebView2.
+
 **What changed in v1.3.0 - trajectory and cost modules reworked**
 
 This release changes two modules. **The trajectory module is rebuilt**: an ascent is now steered, staged, coasted and cut off

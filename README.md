@@ -1,4 +1,4 @@
-# MERLIN (v1.3.0)
+# MERLIN (v1.3.1)
 
 **Mass Estimation Relationships for Launch vehicle Initial sizing**, by Szymon Błażejewicz.
 
@@ -8,6 +8,7 @@
 `MERLIN-<version>-windows.zip`, unzip it, and run `MERLIN/MERLIN.exe`. No Python and no browser are needed; the full
 GUI opens in its own window. Put the folder somewhere you can write to, such as Documents, because your saved
 designs and outputs go inside it. It needs Microsoft Edge WebView2, which is part of Windows 11.
+The app is not signed, so Windows may warn before its first start.
 
 ## About
 
@@ -139,8 +140,8 @@ Releases are built automatically. Push a version tag that matches `pyproject.tom
 `MERLIN-<version>-windows.zip` to the release that the download link above points at:
 
 ```bash
-git tag v1.3.0
-git push origin v1.3.0
+git tag v1.3.1
+git push origin v1.3.1
 ```
 
 To build it on your own machine instead, from a clean virtual environment:

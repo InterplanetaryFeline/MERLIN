@@ -73,3 +73,51 @@ def test_streams_that_exist_are_left_alone():
         assert desktop.redirect_missing_streams(os.path.join(tempfile.gettempdir(), "unused.log")) is None
     finally:
         sys.stdout, sys.stderr = saved
+
+
+def _build_app():
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("build_app", os.path.join(ROOT, "tools", "build_app.py"))
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_the_app_lets_dotnet_load_its_own_downloaded_libraries():
+    """v1.3.0 from a zip extracted with Explorer: every library was marked as downloaded and the window never opened."""
+    import xml.etree.ElementTree as ET
+    with tempfile.TemporaryDirectory() as tmp:
+        path = _build_app().write_exe_config(tmp)
+        assert os.path.basename(path) == "MERLIN.exe.config"
+        assert ET.parse(path).find("runtime/loadFromRemoteSources").get("enabled") == "true"
+
+
+def test_a_zip_without_that_setting_is_refused():
+    b = _build_app()
+    with tempfile.TemporaryDirectory() as tmp:
+        app = os.path.join(tmp, "MERLIN")
+        os.makedirs(app)
+        with open(os.path.join(app, "MERLIN.exe"), "wb") as fh:
+            fh.write(b"x")
+        try:
+            b.make_zip(app, os.path.join(tmp, "a.zip"))
+            refused = False
+        except RuntimeError:
+            refused = True
+        assert refused
+        b.write_exe_config(app)
+        assert os.path.exists(b.make_zip(app, os.path.join(tmp, "b.zip")))
+
+
+def test_the_window_error_names_the_cause_it_has():
+    blocked = RuntimeError("Failed to resolve Python.Runtime.Loader.Initialize from C:/x/Python.Runtime.dll")
+    for installed in (True, False):
+        t = desktop.window_error_text(blocked, installed, "m.log")
+        assert "Unblock" in t and "WebView2" not in t and str(blocked) in t
+    assert "WebView2" in desktop.window_error_text(RuntimeError("x"), False, "m.log")
+    other = desktop.window_error_text(RuntimeError("something else"), True, "m.log")
+    assert "WebView2" not in other and "Unblock" not in other and "something else" in other and "m.log" in other
+
+
+def test_looking_for_webview2_never_raises():
+    assert desktop.webview2_installed() in (True, False, None)
