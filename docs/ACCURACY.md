@@ -644,12 +644,12 @@ From the roadmap, ordered by measured payoff rather than by effort:
   converged GLOM is **identical to ~1e-8 relative**, i.e. to the convergence tolerance. Pinned as a test.
   Prompted by Balesdent (2011) App. B, which found a comparable iteration landing on *different* optima
   from different seeds; ours does not. See [`OPTIMISATION.md`](OPTIMISATION.md) §6.
-* **Of the 24 check vehicles as this tool sizes them, 12 reach their orbit in the simulated ascent, 4 are in orbit but short,
+* **Of the 24 check vehicles as this tool sizes them, 14 reach their orbit in the simulated ascent, 2 are in orbit but short,
   3 fall short of orbit and 5 have no ascent at all.** Until v1.3 it was 2, 4, 9 and 7, with 2 not attempted: the model burned
   every stage continuously, straight to the target altitude, on a gravity turn. What is left is the vehicles and not the
   flight: Delta II, Atlas V 551, Ariane 64, Ariane 5 ECA and Delta IV Heavy are sized with second stages that burn for 12 to 30
-  minutes at a thrust-to-weight of 0.16 to 0.27, which is the Δv-split defect of §6. The first four of those that have
-  published masses for every stage do reach orbit on them (Δ +108 m/s for Delta II, +377 for Atlas V, +21 for Ariane 5).
+  minutes at a thrust-to-weight of 0.16 to 0.27, which is the Δv-split defect of §6. On their published masses
+  Delta II, Atlas V and Ariane 5 do reach orbit (with 108, 377 and 21 m/s to spare).
   [`ASCENT_VALIDATION.md`](ASCENT_VALIDATION.md) has the tables, [`ASCENT.md`](ASCENT.md) the model and what feeding the
   simulated losses back into the sizing does to the lift-off mass errors. None of this touches the errors in §1: the default
   loss method is still the regression.

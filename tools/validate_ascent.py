@@ -34,8 +34,8 @@ ASSUMP = os.path.join(ROOT, "config", "engineering_assumptions.yaml")
 #: Hardware the published stage masses leave out, carried to the end (adapter, equipment bay). From run_validation's
 #: CAP table where it gives one.
 NOTES = {
-    "electron": "stage masses are a community wiki's (low confidence), and the first stage's only published Isp is used "
-                "as its vacuum one",
+    "electron": "stage masses are a community wiki's (low confidence), and one published Isp stands for sea level and "
+                "vacuum",
     "vega": "the published AVUM empty mass is 131 kg; the table for Vega C gives 695 kg for its successor",
     "m_v": "the published stage masses are the motors alone: 5.6 t of the lift-off mass is in none of them",
     "scout_g1": "the published masses and Isp give 8,879 m/s ideal, 1,293 m/s more than the orbital speed, for a 555 km "
@@ -96,7 +96,7 @@ def published_vehicle(key, ref, extra_kg):
         else:
             mdot = p.n_engines * p.thrust_vac_per_engine_N / (G0 * p.isp_vac_s)
         t_vac = mdot * G0 * p.isp_vac_s
-        if isp_sl and isp_sl < p.isp_vac_s:
+        if isp_sl:
             ae = mdot * G0 * (p.isp_vac_s - isp_sl) / P0_PA
         else:
             env = prop.envelope(st, t_vac / (1 if st.is_solid else p.n_engines))

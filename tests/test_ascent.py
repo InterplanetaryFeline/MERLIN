@@ -235,6 +235,22 @@ def test_a_first_stage_without_a_sea_level_isp_lifts_off_at_the_tw_it_reports():
     assert tw == pytest.approx(1.35, abs=0.01)
 
 
+def test_every_ground_launched_design_lifts_off_at_the_tw_it_reports():
+    """Electron gives one Isp for sea level and vacuum: the sizing said 1.49 and the flight, with a back pressure from the
+    nozzle's size, had 1.15."""
+    for name in ("default", "electron", "falcon9", "vega", "soyuz2_1b", "example_htp_kerolox"):
+        r = sized(name)
+        b = tj.ascent_vehicle_from_result(r).burns[0]
+        assert (b.thrust_vac_N - b.exit_area_m2 * P0_PA) / (r.glom_kg * G0) == pytest.approx(r.liftoff_tw, rel=1e-6), name
+
+
+def test_losses_that_do_not_settle_are_refused_and_not_sized():
+    """SLS on fixed engines: the loop once ended on thousands of times its mass and returned it as an answer."""
+    with pytest.raises(SizingError) as e:
+        sized("sls_block1", **{"mission.losses.model": "simulated"})
+    assert e.value.options
+
+
 def test_only_a_liquid_stage_can_be_stopped():
     assert [b.stoppable for b in tj.ascent_vehicle_from_result(sized("epsilon")).burns if b.powered] == [False] * 3
     assert all(b.stoppable for b in tj.ascent_vehicle_from_result(sized("default")).burns if b.powered)

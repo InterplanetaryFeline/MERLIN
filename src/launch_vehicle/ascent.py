@@ -421,6 +421,22 @@ class Flight:
         vh, vr = self.inertial(s)
         return math.hypot(vh, vr) - self.speed_need(s.h)
 
+    def later_dv(self, s):
+        """Impulsive speed the second burn still needs from this first orbit, which may be past the one aimed at."""
+        if self.plan.kind not in ("transfer", "parking"):
+            return 0.0
+        e_fin = -self.mu / (2.0 * self.R + self.plan.perigee_m + self.plan.apogee_m)
+        vh, vr = self.inertial(s)
+        r, v = self.R + s.h, math.hypot(vh, vr)
+        if self.plan.kind == "transfer":
+            apo = self.apses(s)[1]
+            if apo is None:
+                return 0.0
+            r_a = self.R + apo
+            v = r * vh / r_a
+            r = r_a
+        return max(0.0, math.sqrt(max(0.0, 2.0 * (e_fin + self.mu / r))) - v)
+
     # ------------------------------------------------------------------------------------- the solver
     def _newton(self, f, z0, n=14, span=(0.35, 0.35), eps=(1e-3, 1e-3), tol=(150.0, 3e-4)):
         """Damped Newton on two unknowns for (altitude error, flight path angle error)."""
@@ -614,7 +630,7 @@ class Flight:
         if b:
             got.append((b, False))
         for (z, tref, e, w), coast in got:
-            m = self.margin_of(e, w) - self.plan.later_dv_mps
+            m = self.margin_of(e, w) - (self.later_dv(e) if w == "cutoff" else self.plan.later_dv_mps)
             pen = 0.0
             if self.q_limit and s.qmax > self.q_limit:
                 pen = self.q_pen * (s.qmax - self.q_limit) / 1e3
@@ -825,7 +841,7 @@ def second_burn(f: Flight, s, rec, log, dt, centre_s, level, energy):
     """Coast to the burn and burn until the orbit's energy is reached. `centre_s`: coast time to the middle of it."""
     b = f.veh.burns[f.last]
     ve = b.thrust_vac_N / b.mdot_kgs
-    dv = f.plan.later_dv_mps
+    dv = f.later_dv(s)
     tb = min(s.left, s.m * (1.0 - math.exp(-max(dv, 0.0) / ve))) / b.mdot_kgs
     f._event(log, s, "coast to the second burn start")
     f.coast_for(s, max(5.0, centre_s - 0.5 * tb), DT_COAST, rec, True)

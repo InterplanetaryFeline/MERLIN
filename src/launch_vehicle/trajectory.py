@@ -546,8 +546,9 @@ def ascent_vehicle_from_result(res, drag: aero.DragModel | None = None, atmosphe
         if spec.fairing.jettison_stage == s.index:
             fairing_index = len(burns)
         ae = 0.0
-        if s.thrust_sl_N and s.thrust_vac_N > s.thrust_sl_N:
-            ae = (s.thrust_vac_N - s.thrust_sl_N) / P0_PA
+        if s.thrust_sl_N:
+            # a design that gives one Isp for both conditions means no back pressure, and lifts off at the T/W it says
+            ae = max(s.thrust_vac_N - s.thrust_sl_N, 0.0) / P0_PA
         elif not s.is_solid:
             ae = st.engine.n_engines * 0.25 * math.pi * st.engine.exit_diameter_m ** 2
         elif s.nozzle_dims is not None:

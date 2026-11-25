@@ -146,15 +146,15 @@ were not collected. For the vehicles this tool is mainly for, the build-up is ch
 | Saturn V (sized) | 2,826 t | 1.0 | 0.61 | 35 m/s | 28 m/s | −14 m/s |
 | Falcon 9 (sized) | 636 t | 1.2 | 0.72 | 31 m/s | 19 m/s | −19 m/s |
 | Default two-stage | 410 t | 1.0 | 0.72 | 56 m/s | 36 m/s | −31 m/s |
-| Electron (sized) | 16.8 t | 0.8 | 1.10 | 197 m/s | 81 m/s | −178 m/s |
-| Electron, nose lengthened to 2.0 | 16.9 t | 2.0 | 0.58 | 90 m/s | 80 m/s | −13 m/s |
+| Electron (sized) | 16.8 t | 0.8 | 1.10 | 179 m/s | 75 m/s | −158 m/s |
+| Electron, nose lengthened to 2.0 | 16.9 t | 2.0 | 0.58 | 83 m/s | 74 m/s | −12 m/s |
 
 * **Large vehicles barely notice.** The drag model moves the speed in hand by 14–31 m/s.
 * **Small vehicles notice a great deal, and the nose is why.** Drag loss scales with frontal area over mass, which
   is the book's own point on p.174. On the 17-tonne Electron design the build-up more than doubles the drag loss
-  and takes 178 m/s off the speed in hand.
+  and takes 158 m/s off the speed in hand.
 * **Most of that is the assumed nose.** The Electron design carries a nose 0.8 diameters long, marked `assumed`.
-  At 2.0 diameters, nearer a real fairing, the drag loss falls from 197 to 90 m/s. `fairing.nose_length_over_D` is
+  At 2.0 diameters, nearer a real fairing, the drag loss falls from 179 to 83 m/s. `fairing.nose_length_over_D` is
   an `assumed` input in nearly every shipped design, and until v1.1 it only affected the drawing and the fairing
   mass. **It now decides the drag of a small vehicle. Set it from your fairing.**
 

@@ -81,7 +81,7 @@ def test_method_register_is_included():
 
 def test_limitations_are_stated():
     html = globals()["html"]()
-    for phrase in ("No trajectory simulation", "No structural analysis", "not a design qualification"):
+    for phrase in ("No trajectory was flown", "No structural analysis", "not a design qualification"):
         assert phrase in html
 
 

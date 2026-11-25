@@ -670,8 +670,10 @@ def check_result(res) -> list:
                                                 "(vehicle.payload_adapter_method: fraction or auto)"))
     if not res.converged:
         iss.append(Issue("ERROR", "CONV", f"sizing did not converge: {res.status}"))
+    losses = {"simulated": "the losses of its own simulated ascent", "user": "ascent losses you gave"}.get(
+        res.spec.mission.get("loss_model"), "a regression for the ascent losses")
     iss.append(Issue("INFO", "FIDELITY", "Preliminary model. The sizing loop uses mass-estimating "
-                     "relationships and a regression for the ascent losses, and that is the vehicle every mass "
+                     f"relationships and {losses}, and that is the vehicle every mass "
                      "and dimension in this report describes. The optional studies - trajectory, loads, "
                      "structure, control, ascent optimisation, internal ballistics - are ANALYSES OF that "
                      "vehicle, run afterwards and reported separately. None of them feeds back into it: "

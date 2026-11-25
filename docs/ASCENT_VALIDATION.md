@@ -9,15 +9,15 @@ Every propellant load, empty mass, thrust and Isp is the published one, and so a
 | Vehicle | Lift-off mass flown / published [t] | Way to orbit | Orbit asked [km] | Orbit flown [km] | Speed in hand [m/s] | Losses to first cutoff: gravity / drag / steering / back pressure [m/s] | Note |
 |---|---|---|---|---|---|---|---|
 | Orbital/Northrop Minotaur I (4 solid stages) | 36.2 / 36.2 | solid | 185 x 185 | 185 x 1,096 | **+249** | 889 / 201 / 7 / 94 |  |
-| Rocket Lab Electron (LOX/RP-1, composite) | 12.9 / 13.0 | transfer | 500 x 500 | apogee 185 | **-459** | 1,435 / 215 / 26 / 0 | stage masses are a community wiki's (low confidence) |
+| Rocket Lab Electron (LOX/RP-1, composite) | 12.9 / 13.0 | transfer | 500 x 500 | apogee 185 | **-459** | 1,435 / 215 / 26 / 0 | stage masses are a community wiki's (low confidence), and one published Isp stands for sea level and vacuum |
 | SpaceX Falcon 9 Block 5 (expendable, LOX/RP-1) | 544.0 / 549.1 | direct | 200 x 200 | 200 x 200 | **+24** | 1,372 / 38 / 56 / 76 |  |
 | Titan II GLV (N2O4/Aerozine-50) | 160.6 / 154.0 | direct | 160 x 272 | 160 x 272 | **+8** | 1,411 / 192 / 12 / 121 |  |
 | Saturn V (RP-1/LOX, LH2/LOX, LH2/LOX) to TLI | 2,943.2 / 2,894.0 | parking | 190 x 400,000 | 218 x 399,972 | **+197** | 1,601 / 36 / 136 / 131 | flown to the orbit of the design file; the S-IVB does both burns |
 | Pegasus XL (3 solid stages, air-launched) | 22.3 / 23.1 | solid | 200 x 200 | 200 x 333 | **+39** | 531 / 179 / 298 / 21 | no wing lift in this model |
-| Vega (P80 + Zefiro 23 + Zefiro 9 + AVUM) | 135.9 / 137.0 | transfer | 700 x 700 | 700 x 700 | **+523** | 1,204 / 125 / 101 / 131 |  |
-| Scout G-1 (4 solid stages) | 21.8 / 21.7 | solid | 555 x 555 | apogee 555 | **-543** | 1,558 / 175 / 9 / 94 |  |
+| Vega (P80 + Zefiro 23 + Zefiro 9 + AVUM) | 135.9 / 137.0 | transfer | 700 x 700 | 700 x 700 | **+523** | 1,204 / 125 / 101 / 131 | the published AVUM empty mass is 131 kg; the table for Vega C gives 695 kg for its successor |
+| Scout G-1 (4 solid stages) | 21.8 / 21.7 | solid | 555 x 555 | apogee 555 | **-543** | 1,558 / 175 / 9 / 94 | the published masses and Isp give 8,879 m/s ideal, 1,293 m/s more than the orbital speed, for a 555 km polar orbit with no help from the Earth's rotation |
 | Vega C (3 solid stages + AVUM+) | 208.5 / 210.0 | transfer | 700 x 700 | 699 x 701 | **+97** | 1,346 / 112 / 63 / 139 |  |
-| M-V (3 solid stages) | 133.4 / 139.0 | solid | 250 x 250 | 250 x 4,946 | **+956** | 1,040 / 145 / 10 / 145 |  |
+| M-V (3 solid stages) | 133.4 / 139.0 | solid | 250 x 250 | 250 x 4,946 | **+956** | 1,040 / 145 / 10 / 145 | the published stage masses are the motors alone: 5.6 t of the lift-off mass is in none of them |
 | Delta II 7920 (9 x GEM-40, 6 ground-lit + 3 air-lit) | 232.9 / 231.9 | direct | 185 x 185 | 185 x 185 | **+108** | 1,154 / 110 / 78 / 104 |  |
 | Atlas V 551 (5 x AJ-60A + CCB + Centaur III) | 584.2 / 587.0 | direct | 200 x 200 | 200 x 200 | **+377** | 1,173 / 157 / 320 / 84 |  |
 | Ariane 5 ECA (2 x EAP + EPC + ESC-A) | 763.0 / 780.0 | parking | 250 x 35,786 | 359 x 35,677 | **+21** | 1,730 / 88 / 118 / 106 | real GTO ascents go straight in, with one burn of an engine that cannot restart |
@@ -52,31 +52,31 @@ These are not the real vehicles: their masses are this tool's, and several carry
 | Vehicle | Before | Now | Orbit flown [km] | Speed in hand [m/s] | Losses of the flight / sized with [m/s] |
 |---|---|---|---|---|---|
 | Ariane 5 ECA (2 x EAP + EPC + ESC-A) | not attempted | no ascent | - | - | - / 2,907 |
-| Ariane 62 (2 x P120C + Vulcain 2.1 + Vinci) | reached | reached | 500 x 500 | +738 | 2,087 / 2,545 |
+| Ariane 62 (2 x P120C + Vulcain 2.1 + Vinci) | reached | reached | 500 x 500 | +738 | 1,806 / 2,545 |
 | Ariane 64 (4 x P120C + Vulcain 2.1 + Vinci) | no ascent | no ascent | - | - | - / 3,151 |
 | Atlas V 551 (5 x AJ-60A + CCB + Centaur III) | no ascent | no ascent | - | - | - / 2,007 |
-| CASC/SAST Long March 12 (2 kerolox stages) | no ascent | suborbital | apogee 200 | -222 | 2,349 / 1,985 |
+| CASC/SAST Long March 12 (2 kerolox stages) | no ascent | suborbital | apogee 200 | -222 | 2,207 / 1,985 |
 | Delta II 7920 (9 x GEM-40, 6 ground-lit + 3 air-lit) | no ascent | no ascent | - | - | - / 1,907 |
 | Delta IV Heavy (3 x Common Booster Core + DCSS) | no ascent | no ascent | - | - | - / 2,521 |
-| Rocket Lab Electron (LOX/RP-1, composite) | suborbital | short | 185 x 352 | -132 | 2,395 / 2,263 |
-| Epsilon (3 solid stages) | suborbital | reached | 250 x 1,133 | +167 | 1,573 / 1,568 |
-| SpaceX Falcon 9 Block 5 (expendable, LOX/RP-1) | reached | reached | 200 x 200 | +259 | 1,567 / 1,715 |
-| Firefly Alpha (LOX/RP-1, composite) | suborbital | reached | 500 x 500 | +504 | 1,972 / 2,342 |
-| H-IIA 202 (2 x SRB-A + LE-7A core + LE-5B) | suborbital | reached | 300 x 300 | +207 | 2,502 / 2,279 |
-| JAXA/MHI H3-24L (4 x SRB-3 + 2 x LE-9 + LE-5B-3) | not attempted | reached | 269 x 35,767 | +956 | 1,618 / 2,164 |
-| M-V (3 solid stages) | no ascent | reached | 250 x 424 | +50 | 1,391 / 1,352 |
-| Orbital/Northrop Minotaur I (4 solid stages) | suborbital | reached | 185 x 692 | +144 | 1,208 / 1,283 |
+| Rocket Lab Electron (LOX/RP-1, composite) | suborbital | reached | 500 x 500 | +335 | 1,928 / 2,263 |
+| Epsilon (3 solid stages) | suborbital | reached | 250 x 1,133 | +167 | 1,401 / 1,568 |
+| SpaceX Falcon 9 Block 5 (expendable, LOX/RP-1) | reached | reached | 200 x 200 | +259 | 1,456 / 1,715 |
+| Firefly Alpha (LOX/RP-1, composite) | suborbital | reached | 500 x 500 | +504 | 1,838 / 2,342 |
+| H-IIA 202 (2 x SRB-A + LE-7A core + LE-5B) | suborbital | reached | 300 x 300 | +207 | 2,072 / 2,279 |
+| JAXA/MHI H3-24L (4 x SRB-3 + 2 x LE-9 + LE-5B-3) | not attempted | reached | 269 x 35,767 | +956 | 1,208 / 2,164 |
+| M-V (3 solid stages) | no ascent | reached | 250 x 424 | +50 | 1,302 / 1,352 |
+| Orbital/Northrop Minotaur I (4 solid stages) | suborbital | reached | 185 x 692 | +144 | 1,140 / 1,283 |
 | Pegasus XL (3 solid stages, air-launched) | suborbital | reached | 200 x 1,164 | +262 | 1,060 / 1,322 |
-| Saturn V (RP-1/LOX, LH2/LOX, LH2/LOX) to TLI | short | short | 207 x 143,496 | -147 | 2,112 / 1,817 |
-| Scout G-1 (4 solid stages) | no ascent | reached | 555 x 3,022 | +553 | 1,609 / 2,051 |
-| NASA SLS Block 1 (2 x five-segment SRB + 4 x RS-25 + ICPS) | short | no ascent | - | - | - / 1,817 |
-| Soyuz-2.1b (4 tapered strap-ons + Blok A + Blok I) | suborbital | suborbital | apogee 200 | -516 | 2,817 / 1,843 |
-| Titan II GLV (N2O4/Aerozine-50) | suborbital | short | 160 x 218 | -16 | 1,719 / 1,550 |
-| Vega (P80 + Zefiro 23 + Zefiro 9 + AVUM) | short | reached | 700 x 700 | +551 | 2,285 / 2,694 |
-| Vega C (3 solid stages + AVUM+) | short | reached | 699 x 701 | +548 | 2,394 / 2,795 |
-| LandSpace Zhuque-2 (LOX/CH4) | suborbital | suborbital | apogee 200 | -344 | 2,083 / 1,630 |
+| Saturn V (RP-1/LOX, LH2/LOX, LH2/LOX) to TLI | short | short | 207 x 143,496 | -147 | 1,964 / 1,817 |
+| Scout G-1 (4 solid stages) | no ascent | reached | 555 x 3,022 | +553 | 1,498 / 2,051 |
+| NASA SLS Block 1 (2 x five-segment SRB + 4 x RS-25 + ICPS) | short | reached | 1,353 x 398,832 | +444 | 1,373 / 1,817 |
+| Soyuz-2.1b (4 tapered strap-ons + Blok A + Blok I) | suborbital | suborbital | apogee 200 | -516 | 2,359 / 1,843 |
+| Titan II GLV (N2O4/Aerozine-50) | suborbital | short | 160 x 218 | -16 | 1,566 / 1,550 |
+| Vega (P80 + Zefiro 23 + Zefiro 9 + AVUM) | short | reached | 700 x 700 | +551 | 2,143 / 2,694 |
+| Vega C (3 solid stages + AVUM+) | short | reached | 699 x 701 | +548 | 2,247 / 2,795 |
+| LandSpace Zhuque-2 (LOX/CH4) | suborbital | suborbital | apogee 200 | -344 | 1,975 / 1,630 |
 
 | | Reached | Short | Suborbital | No ascent | Not attempted |
 |---|---|---|---|---|---|
 | Before | 2 | 4 | 9 | 7 | 2 |
-| Now | 12 | 3 | 3 | 6 | 0 |
+| Now | 14 | 2 | 3 | 5 | 0 |

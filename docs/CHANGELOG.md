@@ -13,7 +13,7 @@ when the orbit is reached and what is left is reported; orbits above 200 km are 
 again (book pp.372-373), or straight in if you choose; the Earth turns under the flight; a solid last stage coasts to the top
 and fires level; an air launch starts from its carrier; engines that can throttle hold the acceleration limit; and GTO missions
 are flown instead of refused. The way to orbit and the first altitude are inputs under Mission, Trajectory model. The shipped
-default now reaches its orbit with speed to spare. Of the 24 check vehicles 12 reach their orbit, against 2 before.
+default now reaches its orbit with speed to spare. Of the 24 check vehicles 14 reach their orbit, against 2 before.
 
 *Checked against real vehicles* ([`ASCENT_VALIDATION.md`](ASCENT_VALIDATION.md)). Sixteen were flown on their published masses,
 where a perfect model would leave nothing over: Falcon 9 +24 m/s, Titan II +8, Ariane 5 +21, Pegasus +39, H-IIA +72, Vega C +97,
@@ -22,9 +22,10 @@ Delta II +108; the rest is in the table, misses included. Nothing was tuned.
 *Simulated losses in the sizing*, off unless chosen: an ascent-loss method that sizes the vehicle with the losses of its own
 flight, and lets the split search see them ([`ASCENT.md`](ASCENT.md)).
 
-*Two ascent bugs fixed.* Vehicles with strap-ons had the core's back pressure charged twice. A first stage with no sea-level Isp
+*Ascent bugs fixed.* Vehicles with strap-ons had the core's back pressure charged twice. A first stage with no sea-level Isp
 was sized as if its vacuum thrust lifted it off: `example_htp_kerolox` reported 1.35 and flew 0.92, and is now sized
-for 1.35, with 31 % more thrust. A coast between stages no longer counts as a moment with no control authority.
+for 1.35, with 31 % more thrust. Electron, which gives one Isp for both conditions, reported 1.49
+and flew 1.15. A coast between stages no longer counts as a moment with no control authority.
 
 *Corrections to the cost model.* Development cost was wrong in six ways. The engine relation was given the mass of a whole cluster
 instead of one engine (2.4 times too much for six). The systems-engineering factor was 1.043 instead of 1.04 to the

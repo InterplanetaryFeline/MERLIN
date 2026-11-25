@@ -19,6 +19,8 @@ import copy
 FIRST_GUESS_MPS = 1800.0
 TOL_MPS = 1.0
 MAX_FLIGHTS = 8
+#: a loss above this is a vehicle running away, not an ascent
+RUNAWAY_MPS = 5000.0
 #: what a split whose ascent does not close is charged in the optimiser, above the worst that does
 NO_ASCENT_PENALTY_MPS = 1500.0
 
@@ -92,6 +94,8 @@ def size(spec, keep_history: bool = True, memory: Memory | None = None, tol_mps:
         tried.append((loss, new))
         if abs(new - loss) < tol_mps:
             break
+        if new > RUNAWAY_MPS:
+            break
         if len(tried) >= 2 and abs(tried[-1][0] - tried[-2][0]) > 1e-6:
             (x0, y0), (x1, y1) = tried[-2:]
             slope = max(-0.8, min(0.8, (y1 - y0) / (x1 - x0)))      # secant on loss_out(loss_in) = loss_in
@@ -103,8 +107,13 @@ def size(spec, keep_history: bool = True, memory: Memory | None = None, tol_mps:
     res.budget.info["simulated_loss"] = dict(loss_mps=tried[-1][0], flown_mps=tried[-1][1], flights=len(tried),
                                              settled=abs(tried[-1][1] - tried[-1][0]) < tol_mps)
     if not res.budget.info["simulated_loss"]["settled"]:
-        res.budget.notes.append(f"the simulated losses did not settle in {len(tried)} flights: sized with "
-                                f"{tried[-1][0]:,.0f} m/s, flown {tried[-1][1]:,.0f} m/s")
+        raise SizingError(
+            f"the simulated losses do not settle: sized with {tried[-1][0]:,.0f} m/s the vehicle loses "
+            f"{tried[-1][1]:,.0f} m/s, after {len(tried)} flights. Usually a heavier vehicle on the same engines flies worse, so "
+            f"each sizing makes the next loss larger: give it more thrust, or another stage split",
+            field="mission.losses.model",
+            options=[{"label": "Use the book's loss regression instead", "path": "mission.losses.model",
+                      "value": "book_penalty"}])
     return res
 
 
@@ -184,7 +193,7 @@ def optimise_split(spec, optimise, rounds: int = 3, **kw):
             if not res.converged:
                 return
             new, _o = flown(res, memory)
-            if new is None:
+            if new is None or new > RUNAWAY_MPS:
                 table.add(fr, None)
                 return
             loss = new
@@ -194,8 +203,8 @@ def optimise_split(spec, optimise, rounds: int = 3, **kw):
     for fr in sample_splits(N, centre, 8 if N == 2 else 10):
         fly_at(fr)
     if not any(v is not None for v in table.y):
-        raise SizingError("no stage split tried has a simulated ascent that closes, so there are no losses to optimise "
-                          "with", field="mission.losses.model",
+        raise SizingError("none of the stage splits tried gives a vehicle that both sizes and flies, so there are no losses "
+                          "to optimise with", field="mission.losses.model",
                           options=[{"label": "Use the book's loss regression instead", "path": "mission.losses.model",
                                     "value": "book_penalty"}])
     out = None

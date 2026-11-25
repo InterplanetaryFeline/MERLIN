@@ -526,7 +526,7 @@ def _study_summary(extras):
                     margin_mps=tr.margin_mps, propellant_left_kg=tr.propellant_left_kg,
                     second_burn_dv_mps=tr.second_burn_dv_mps or None,
                     equivalent_loss_mps=tr.equivalent_loss_mps, budget_loss_mps=tr.budget_loss_mps or None)
-            out["trajectory"]["notes"] = [n for n in tr.notes if not n.startswith(("drag ", "reference area", "atmosphere"))]
+            out["trajectory"]["notes"] = [n for n in tr.notes if not n.startswith(("drag ", "reference area", "atmosphere", "way to orbit"))]
         ins = getattr(tr, "insertion", None)
         if ins:
             # a dict and a list: the generic quantity table skips both and the tab draws them itself
@@ -573,7 +573,12 @@ def _study_summary(extras):
                               if k in unc}
     ao = extras.get("ascent_optimum")
     if ao:
-        out["ascent_optimum"] = {k: ao.get(k) for k in ("payload_kg", "gain_kg", "binding") if k in ao}
+        best = ao.get("best") or {}
+        out["ascent_optimum"] = {k: v for k, v in dict(
+            speed_gain_mps=ao.get("speed_gain_mps"), payload_gain_kg=ao.get("payload_gain_kg"),
+            handover_km=best["handover_h_m"] / 1e3 if best.get("handover_h_m") else None,
+            vertical_rise_s=best.get("vertical_rise_s"), stopped_by=(ao.get("binding") or {}).get("detail"),
+            binding=ao.get("binding")).items() if v is not None}
     return out
 
 

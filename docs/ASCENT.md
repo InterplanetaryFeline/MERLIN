@@ -27,6 +27,9 @@ The equations are the book's Table 6.1 in a frame turning with the part of the E
 ω = ω_E cos i, which adds a centrifugal and a Coriolis term (SUPPLEMENTARY). The launch site's speed across the plane is removed
 by a constant yaw whose sine is that speed over the vacuum ideal speed.
 
+Where the stages below a liquid last stage carry past the first orbit on their own (SLS), that orbit is flown as it is and the
+second burn needs less.
+
 **Solving it.** Eq. 6:59 with both ends free has two constants, which are exactly enough for two terminal conditions: the
 altitude and a level arrival. A damped Newton iteration finds them, starting in vacuum when it has nothing better to start
 from. The pitch kick is what is left, and it is chosen for the most speed in hand at the end: kicks are spread over the flight
@@ -70,29 +73,51 @@ against the book's 10-14.
 
 ## 5. Feeding the losses back into the sizing
 
-**Measured on the first 17 of the 24 validation vehicles only; the run was cut short and is to be finished.** Error in lift-off mass against the published figure:
+Error in lift-off mass against the published figure, sized with the design's own loss method and with the simulated losses, with
+the design's own Δv split and with the split optimised for lift-off mass. Regenerate with `python tools/measure_simulated_losses.py`.
 
-| Vehicle | Regression, own split | Simulated, own split | Regression, optimised split | Simulated, optimised split |
-|---|---|---|---|---|
-| ariane5_eca | +9.7 % | - | +2.9 % | - |
-| ariane62 | -23.5 % | - | -23.6 % | - |
-| ariane64 | -9.3 % | - | -10.3 % | -15.7 % |
-| atlas5_551 | -8.2 % | - | -19.0 % | - |
-| cz12 | -15.9 % | - | -19.3 % | - |
-| delta2_7920 | +28.3 % | - | -0.4 % | - |
-| delta4_heavy | +0.4 % | - | +0.4 % | - |
-| electron | +29.0 % | +33.4 % | +25.8 % | +33.4 % |
-| epsilon | -19.8 % | -24.5 % | -25.2 % | -24.6 % |
-| falcon9 | +15.9 % | +6.6 % | +14.2 % | +5.1 % |
-| firefly_alpha | +8.9 % | - | +6.1 % | -19.4 % |
-| h2a_202 | +6.0 % | -5.9 % | +6.0 % | - |
-| h3_24l | -3.8 % | - | -6.4 % | -17.6 % |
-| m_v | +3.9 % | +1.6 % | +0.6 % | +0.4 % |
-| minotaur1 | -8.0 % | -13.0 % | -13.4 % | -15.0 % |
-| pegasus_xl | -13.0 % | -22.3 % | -17.6 % | -26.5 % |
-| saturn5 | -2.4 % | +1.7 % | -13.2 % | +1.7 % |
+| Vehicle | Design's loss method, own split | Simulated, own split | Design's method, optimised split | Simulated, optimised split | Optimised split: method / simulated [%] | Refused because |
+|---|---|---|---|---|---|---|
+| Ariane 5 ECA (2 x EAP + EPC + ESC-A) | +9.7 % | - | +2.9 % | - | 46 / 54; - | own split: ascent does not close; optimised: no split sizes and flies |
+| Ariane 62 (2 x P120C + Vulcain 2.1 + Vinci) | -23.5 % | - | -23.6 % | - | 47 / 53; - | own split: core too small for its strap-ons; optimised: no split sizes and flies |
+| Ariane 64 (4 x P120C + Vulcain 2.1 + Vinci) | -9.3 % | - | -10.3 % | -15.7 % | 60 / 40; 66 / 34 | own split: core too small for its strap-ons |
+| Atlas V 551 (5 x AJ-60A + CCB + Centaur III) | -8.2 % | - | -19.0 % | - | 36 / 64; - | own split: ascent does not close; optimised: no split sizes and flies |
+| CASC/SAST Long March 12 (2 kerolox stages) | -15.9 % | - | -19.3 % | - | 47 / 53; - | own split: ascent does not close; optimised: no split sizes and flies |
+| Delta II 7920 (9 x GEM-40, 6 ground-lit + 3 air-lit) | +28.3 % | - | -0.4 % | - | 40 / 60; - | own split: ascent does not close; optimised: no split sizes and flies |
+| Delta IV Heavy (3 x Common Booster Core + DCSS) | +0.4 % | - | +0.4 % | - | 70 / 30; - | own split: ascent does not close; optimised: no split sizes and flies |
+| Rocket Lab Electron (LOX/RP-1, composite) | +29.0 % | +16.2 % | +25.8 % | +16.4 % | 33 / 67; 43 / 57 |  |
+| Epsilon (3 solid stages) | -19.8 % | -24.5 % | -25.2 % | -24.6 % | 29 / 32 / 39; 36 / 38 / 26 |  |
+| SpaceX Falcon 9 Block 5 (expendable, LOX/RP-1) | +15.9 % | +6.6 % | +14.2 % | +5.1 % | 32 / 68; 46 / 54 |  |
+| Firefly Alpha (LOX/RP-1, composite) | +8.9 % | - | +6.1 % | -19.4 % | 40 / 60; 41 / 59 | own split: tank not buildable |
+| H-IIA 202 (2 x SRB-A + LE-7A core + LE-5B) | +6.0 % | -5.9 % | +6.0 % | - | 66 / 34; - | optimised: tank not buildable |
+| JAXA/MHI H3-24L (4 x SRB-3 + 2 x LE-9 + LE-5B-3) | -3.8 % | - | -6.4 % | -17.6 % | 54 / 46; 52 / 48 | own split: tank not buildable |
+| M-V (3 solid stages) | +3.9 % | +1.6 % | +0.6 % | +0.4 % | 25 / 30 / 45; 26 / 26 / 48 |  |
+| Orbital/Northrop Minotaur I (4 solid stages) | -8.0 % | -13.0 % | -13.4 % | -15.0 % | 17 / 17 / 33 / 33; 19 / 16 / 37 / 28 |  |
+| Pegasus XL (3 solid stages, air-launched) | -13.0 % | -22.3 % | -17.6 % | -26.5 % | 32 / 31 / 37; 35 / 28 / 37 |  |
+| Saturn V (RP-1/LOX, LH2/LOX, LH2/LOX) to TLI | -2.4 % | +1.7 % | -13.2 % | +1.7 % | 16 / 44 / 39; 26 / 38 / 35 |  |
+| Scout G-1 (4 solid stages) | +41.3 % | +9.1 % | -11.5 % | -21.5 % | 22 / 23 / 24 / 31; 20 / 24 / 27 / 28 |  |
+| NASA SLS Block 1 (2 x five-segment SRB + 4 x RS-25 + ICPS) | -10.2 % | - | -20.8 % | -22.4 % | 43 / 57; 64 / 36 | own split: losses run away |
+| Soyuz-2.1b (4 tapered strap-ons + Blok A + Blok I) | +15.7 % | - | -10.5 % | -13.6 % | 38 / 62; 55 / 45 | own split: ascent does not close |
+| Titan II GLV (N2O4/Aerozine-50) | +16.0 % | +16.7 % | +15.8 % | - | 40 / 60; - | optimised: tank not buildable |
+| Vega (P80 + Zefiro 23 + Zefiro 9 + AVUM) | +37.5 % | -4.3 % | +0.5 % | - | 21 / 17 / 22 / 41; - | optimised: no split sizes and flies |
+| Vega C (3 solid stages + AVUM+) | +37.0 % | -0.1 % | +4.6 % | - | 29 / 16 / 17 / 39; - | optimised: no split sizes and flies |
+| LandSpace Zhuque-2 (LOX/CH4) | -31.5 % | -22.9 % | -31.7 % | - | 41 / 59; - | optimised: tank not buildable |
 
-A dash is a vehicle the simulated method refuses: its ascent does not close, or it is not buildable at that loss. On the shipped default the lift-off mass goes from 410.0 t to 349.4 t with its own split, and the optimised split from 35/65 to 45/55 (349.1 t). Off by default, because the regression's margin goes with its error.
+own split: 13 vehicles size both ways. Mean absolute error 20.1 % with the design's method, 11.1 % simulated; median 16.0 % and 9.1 %; mean signed +8.6 % and -3.2 %.
+
+optimised split: 13 vehicles size both ways. Mean absolute error 13.5 % with the design's method, 15.4 % simulated; median 13.2 % and 16.4 %; mean signed -6.3 % and -11.8 %.
+
+A dash is a vehicle the simulated method refuses. Most are refused because the vehicle as this tool sizes it cannot be flown, and
+CZ-12, Soyuz and SLS because their engines are fixed: a heavier vehicle flies worse on them, and the sizing runs away.
+
+**What it says.** At the design's own split, for the 13 vehicles that size both ways, the mean absolute error falls from 20.1 % to
+11.1 % and the median from 16.0 % to 9.1 %. Vega, Vega C and Scout, where the regression charges a fast solid or a slow last stage
+far too much, go from about +40 % to within 10 %. With the split optimised for the lowest mass it does not help: 13.5 % against
+15.4 %, and everything comes out lighter, because an optimiser takes every optimism there is in the mass model. So it is a good
+check on a design whose split is known, and it stays off by default: it refuses 11 of the 24 vehicles at their own split.
+
+On the shipped default the lift-off mass goes from 410.0 t to 349.4 t with its own split, and the optimised split from 35/65 to
+45/55 (349.1 t). The regression's losses were a margin as well as an error, and this takes both away.
 
 ## 6. What it does not do
 

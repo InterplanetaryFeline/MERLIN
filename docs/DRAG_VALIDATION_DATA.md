@@ -104,8 +104,8 @@ A variant whose altitude at 83 s is below 13.57 km could not be flown through th
 |---|---|---|---|---|---|---|---|---|
 | `validation/saturn5.yaml` | 2,825.7 | 10.10 | 1.00 | 0.61 | 35 | 28 | 40 | -14 |
 | `validation/falcon9.yaml` | 636.3 | 3.70 | 1.20 | 0.72 | 31 | 19 |  | -19 |
-| `validation/electron.yaml` | 16.8 | 1.20 | 0.80 | 1.10 | 197 | 81 |  | -178 |
-| `validation/electron.yaml with the nose lengthened` | 16.9 | 1.20 | 2.00 | 0.58 | 90 | 80 |  | -13 |
+| `validation/electron.yaml` | 16.8 | 1.20 | 0.80 | 1.10 | 179 | 75 |  | -158 |
+| `validation/electron.yaml with the nose lengthened` | 16.9 | 1.20 | 2.00 | 0.58 | 83 | 74 |  | -12 |
 | `examples/example_solid_smallsat.yaml` | 15.8 | 1.30 | 1.20 | 0.97 | 321 | 176 |  | -231 |
 | `config/default_design.yaml` | 410.0 | 4.00 | 1.00 | 0.72 | 56 | 36 |  | -31 |
 

@@ -1282,6 +1282,8 @@ const SUMMARY_LABELS = {
   governing: "Governing case", moment_kNm: "Governing bending moment [kN\u00b7m]", z_m: "at z [m]",
   thickest_mm: "Thickest shell required [mm]", shell: "Which shell", driver: "Sized by",
   mass_ratio: "Monocoque / relationship mass", converged: "Converged",
+  speed_gain_mps: "Gain in speed in hand [m/s]", payload_gain_kg: "Gain in payload on this vehicle [kg]",
+  handover_km: "Gravity turn hands over to steering at [km]", vertical_rise_s: "Vertical rise [s]", stopped_by: "What stops it",
   margin_mps: "Speed in hand at the end [m/s]", propellant_left_kg: "Propellant left in the last stage [kg]",
   second_burn_dv_mps: "Second burn [m/s]", profile_why: "Way to orbit",
   equivalent_loss_mps: "Losses of this flight, against the Δv budget [m/s]", budget_loss_mps: "Losses the design was sized with [m/s]",
@@ -1493,7 +1495,7 @@ function orbitCheck(o) {
     rows.push(["Eccentricity", o.eccentricity.toFixed(4), ""]);
   }
   rows.push(["Inertial speed at the end [m/s]", fmt(o.inertial_speed_mps, 0), ""]);
-  rows.push(["Inertial flight path angle at the end [deg]", o.inertial_gamma_deg.toFixed(2), "0.00"]);
+  rows.push(["Inertial flight path angle at the end [deg]", (Math.abs(o.inertial_gamma_deg) < 0.005 ? 0 : o.inertial_gamma_deg).toFixed(2), "0.00"]);
   if (o.speed_margin_mps !== null && o.speed_margin_mps !== undefined)
     rows.push(["Speed in hand [m/s]", (o.speed_margin_mps >= 0 ? "+" : "") + fmt(o.speed_margin_mps, 0), ""]);
   box.append(table(["", "Flown", "Asked for"], rows, [1, 2]));
