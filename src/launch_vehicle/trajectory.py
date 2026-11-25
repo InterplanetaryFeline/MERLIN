@@ -187,6 +187,7 @@ class TrajectoryResult:
     profile: str = ""                  # direct | transfer | parking | solid
     profile_why: str = ""
     parking_altitude_m: float = 0.0    # altitude of the first insertion
+    closest_attempt: bool = False      # the ascent does not close, and this is the attempt that came nearest
     margin_mps: float = 0.0            # speed left in the tanks at the end (+), or missing (-)
     propellant_left_kg: float = 0.0
     second_burn_dv_mps: float = 0.0
@@ -875,7 +876,12 @@ def fly_design(res, drag: aero.DragModel | None = None, atmosphere: str = "book_
     veh = ascent_vehicle_from_result(res, drag, atmosphere, last_ascent_stage=last_ascent_stage)
     f = ascent.flight_for(res, veh, profile or "auto", parking_altitude_m or ascent.PARKING_M, target_altitude_m,
                           last_ascent_stage, rise_s=vertical_rise_s, **options)
-    sol = f.search()[0] if kick_deg is None else f.try_kick(kick_deg)
+    if kick_deg is None:
+        sol, tried = f.search()
+        if not sol.ok:
+            sol = f.closest(tried) or sol
+    else:
+        sol = f.try_kick(kick_deg)
     out = ascent.fly(f, sol, veh.name, dt)
     if not out.converged:
         out.notes.append(_diagnose(res, veh, out))

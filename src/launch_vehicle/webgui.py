@@ -526,7 +526,10 @@ def _study_summary(extras):
                     margin_mps=tr.margin_mps, propellant_left_kg=tr.propellant_left_kg,
                     second_burn_dv_mps=tr.second_burn_dv_mps or None,
                     equivalent_loss_mps=tr.equivalent_loss_mps, budget_loss_mps=tr.budget_loss_mps or None)
-            out["trajectory"]["notes"] = [n for n in tr.notes if not n.startswith(("drag ", "reference area", "atmosphere", "way to orbit"))]
+            why = () if tr.converged else tuple(n for n in tr.notes if n.startswith(("the flight shown", "why it did not")))
+            if why:
+                out["trajectory"]["diagnosis"] = list(why)
+            out["trajectory"]["notes"] = [n for n in tr.notes if n not in why and not n.startswith(("drag ", "reference area", "atmosphere", "way to orbit"))]
         ins = getattr(tr, "insertion", None)
         if ins:
             # a dict and a list: the generic quantity table skips both and the tab draws them itself

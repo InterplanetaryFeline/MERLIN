@@ -33,7 +33,7 @@ pressure over the design's own limit counts against a kick (Q_PENALTY_MPS_PER_KP
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 G0 = 9.80665
 
@@ -54,6 +54,8 @@ VERTICAL_RISE_S = 10.0
 #: lift-off kicked at 8 m/s has no gravity turn at all: the angle grows as (v/v_kick)^(g/a) and the smallest kick
 #: noses over.
 KICK_SPEED_MPS = 30.0
+#: an attempt that does not close has fallen back when it descends through this. ASSUMED, the conventional edge of space.
+CLOSEST_FLOOR_M = 100e3
 DT_ATM, DT_EXO, DT_SOLVE, DT_COAST = 0.25, 1.0, 2.5, 10.0
 MAX_COAST_S = 20_000.0
 
@@ -130,14 +132,14 @@ class Solution:
     ok: bool = False
     why: str = ""
     score: float = -math.inf
+    closest: bool = False           # no steering closes the ascent: this is the attempt that came nearest (Flight.closest)
 
 
 class Flight:
     def __init__(self, veh, plan: Plan, mu: float, radius: float, omega: float = 0.0, w_out: float = 0.0,
                  rise_s: float = VERTICAL_RISE_S, q_limit_Pa: float | None = None, accel_limit_g: float | None = None,
                  handover_h_m: float = HANDOVER_H_M, handover_q_Pa: float = HANDOVER_Q_PA, qalpha_limit: float | None = None,
-                 kick_speed: float = KICK_SPEED_MPS, q_hard: bool = False, start: dict | None = None,
-                 node_angle=None):
+                 kick_speed: float = KICK_SPEED_MPS, q_hard: bool = False, start: dict | None = None):
         self.veh, self.plan, self.mu, self.R, self.om = veh, plan, mu, radius, omega
         self.rise, self.q_limit, self.a_lim = rise_s, q_limit_Pa, accel_limit_g
         self.hh, self.hq = handover_h_m, handover_q_Pa
@@ -146,7 +148,6 @@ class Flight:
         self.q_pen = 1000.0 if q_hard else Q_PENALTY_MPS_PER_KPA
         self.air = Air(veh.atmosphere)
         self.start = start
-        self.node_angle = node_angle
         ideal, m = 0.0, veh.m0_kg
         for i, b in enumerate(veh.burns):
             if veh.fairing_jettison_index == i:
@@ -157,17 +158,15 @@ class Flight:
                 ideal += b.thrust_vac_N / b.mdot_kgs * math.log(m / (m - mp))
                 m -= mp
             m -= b.jettison_kg
-        self.ideal_total = ideal
         self.w_out = w_out
         self.cyaw = math.sqrt(max(0.0, 1.0 - (w_out / ideal) ** 2)) if ideal > 0 else 1.0
         self.powered = [i for i, b in enumerate(veh.burns) if b.powered and b.mdot_kgs > 0]
         self.last = self.powered[-1]
-        self.events: list = []
         self.tk = rise_s
         self.allow_over = False         # accept an orbit already passed when the last stage lights
         self.pulling = False            # an air launch pulling up, which its wing does and this model does not
         self.grids_left = 3             # grid searches for a start; a vehicle that fails three will fail the rest
-        self.stop_below = -1.0
+        self.stop_below = -math.inf     # a flight descending through this has fallen back
         self.vacuum = False             # the solver's first pass ignores the air above the hand-over
 
     # ------------------------------------------------------------------------------------- frame and orbit
@@ -376,7 +375,7 @@ class Flight:
                     return "handover"
                 if mode == "exo" and (s.h < -50e3 if not self.vacuum else s.h < -0.5 * self.R):
                     return "ground"
-                if rec is not None and (s.h < -1.0 or (s.h < self.stop_below and s.g < 0.0)):
+                if (rec is not None and s.h < -1.0) or (s.h < self.stop_below and s.g < 0.0):
                     return "ground"
             self._finish_burn(s, log, jettison=s.bi != self.last)
         return "depleted"
@@ -741,6 +740,82 @@ class Flight:
         return best, sols
 
 
+    # ------------------------------------------------------------------------------------- when nothing closes
+    def attempt(self, s, sol, dt, rec=None, log=None, losses=False):
+        """Fly a steering that is not a solution from the hand-over, to the last cutoff or burnout or the ground."""
+        if not sol.coast:
+            return self.run(s, "exo", self.linear_tangent(sol.A, sol.B, s.t, sol.tref), dt=dt, e_target=self.e_insert(),
+                            rec=rec, log=log, losses=losses)
+        why = self.run(s, "exo", self.linear_tangent(sol.A, sol.A, s.t, 1.0), dt=dt, stop_before=self.last, rec=rec,
+                       log=log, losses=losses)
+        if why != "before":
+            return why
+        self._event(log, s, "coast to the last stage start")
+        tb = self.veh.burns[self.last].duration_s
+        if not self.coast_to_apex(s, -tb / 2 + sol.tau * 100.0, dt=min(dt, DT_SOLVE), rec=rec, losses=losses):
+            return "ground"
+        return self.run(s, "exo", lambda t, g: 0.0, dt=min(dt, 1.0), rec=rec, log=log, losses=losses)
+
+    def closest(self, sols):
+        """The attempt to show when no steering closes the ascent: the one on the highest perigee, which counts both the
+        speed and how level it is, when its last stage stops or when it falls back through CLOSEST_FLOOR_M."""
+        legs = {}
+
+        def rank(sol):
+            y = sol.kick_deg
+            if y not in legs:
+                legs[y] = self.atmosphere_leg(y)
+            s0, why = legs[y]
+            if why != "handover":
+                return None
+            s = s0.copy()
+            sol.tref = self.remaining_time(s0)
+            self.stop_below = CLOSEST_FLOOR_M
+            why = self.attempt(s, sol, min(20.0, max(DT_SOLVE, sol.tref / 100.0)))
+            self.stop_below = -math.inf
+            return self.apses(s)[0] if why in ("cutoff", "depleted", "ground") else None
+
+        def of(kick, a, b, coast):
+            if coast:
+                return Solution(kick, math.tan(a), math.tan(a), tau=b, coast=True, closest=True)
+            return Solution(kick, math.tan(a), math.tan(b), closest=True)
+
+        reach = sorted({q.kick_deg for q in sols if q.why == "no steering"})
+        step = max(1, (len(reach) + 5) // 6)
+        best = None
+        for kick in reach[::step]:
+            grid = [(math.radians(a), math.radians(b), False) for a in range(-10, 81, 15) for b in range(-40, 81, 15)]
+            if self.plan.kind == "solid":
+                grid += [(math.radians(a), tau, True) for a in range(0, 81, 10) for tau in (-0.5, 0.0, 0.5)]
+            for a, b, coast in grid:
+                r = rank(of(kick, a, b, coast))
+                if r is not None and (best is None or r > best[0]):
+                    best = (r, kick, a, b, coast)
+        if best is None:
+            return None
+        r, kick, a, b, coast = best
+        lim = math.radians(88.0)
+        d = [0.3, 0.13, 0.2 if coast else 0.13]                # a pattern search from the best of the grid
+        for _ in range(60):
+            for i, sign in ((i, sign) for i in range(3) for sign in (1, -1)):
+                k2 = kick + sign * d[0] * 10.0 if self.start else kick * math.exp(sign * d[0])
+                z = (k2 if i == 0 else kick, a + sign * d[1] if i == 1 else a, b + sign * d[2] if i == 2 else b)
+                if z[0] <= 0 or abs(z[1]) > lim or (not coast and abs(z[2]) > lim):
+                    continue
+                q = rank(of(*z, coast))
+                if q is not None and q > r:
+                    r, (kick, a, b) = q, z
+                    break
+            else:
+                d = [0.5 * x for x in d]
+                if d[1] < 2e-3:
+                    break
+        sol = of(kick, a, b, coast)
+        rank(sol)
+        sol.why = "no steering"
+        return sol
+
+
 # --------------------------------------------------------------------------------------------- choosing the plan
 def make_plan(mu, radius, perigee_m, apogee_m, profile="auto", parking_m=PARKING_M, stoppable=True) -> Plan:
     """Pick how the vehicle goes to orbit: see the module notes and book pp.372-373."""
@@ -874,15 +949,30 @@ def fly(f: Flight, sol: Solution, veh_name: str, dt=0.5):
     out.thrust_N[0] = max(b0.thrust_vac_N - b0.exit_area_m2 * f.air.at(out.h_m[0])[1], 0.0)
     if why != "handover" or not sol.ok:
         # fly on with the thrust along the path, so that there is a history to look at
+        how = ""
         if why == "handover":
-            f.stop_below = 0.8 * s.h
-            f.run(s, "exo", lambda t, g: g, dt=1.0, rec=rec, log=log, losses=True)
+            f.stop_below = CLOSEST_FLOOR_M if sol.closest else 0.8 * s.h
+            if sol.closest:
+                f._event(log, s, "linear tangent steering")
+                how = f.attempt(s, sol, min(1.0, 2 * dt), rec, log, True)
+            else:
+                f.run(s, "exo", lambda t, g: g, dt=1.0, rec=rec, log=log, losses=True)
         rec(s, True)
         out.outcome = "nosed_over" if why == "nose" else "fell_back"
         out.status = {"nose": "the vehicle noses over in the atmosphere",
                       "no rise": "the vehicle does not gain speed off the pad"}.get(
             why, "no steering brings the vehicle level at the insertion altitude: it comes down before it has the speed")
         finish(f, out, s, v0)
+        out.closest_attempt = bool(how)
+        if how:
+            vh, vr = f.inertial(s)
+            end = {"cutoff": "its engine is cut off with the energy of the first orbit",
+                   "depleted": "its last stage burns out"}.get(how, "it falls back, still burning,")
+            out.notes.append(
+                f"the flight shown is the closest attempt found: {end} at {s.h/1e3:,.0f} km and "
+                f"{math.hypot(vh, vr):,.0f} m/s inertial, {'climbing' if s.g > 0 else 'descending'} at "
+                f"{abs(math.degrees(s.g)):.0f} deg. The first orbit needs {f.speed_need(f.plan.h_ins_m):,.0f} m/s, level, at "
+                f"{f.plan.h_ins_m/1e3:,.0f} km")
         return out
     f._event(log, s, "linear tangent steering")
     if sol.coast:

@@ -16,13 +16,10 @@ import pytest
 from helpers import *                                        # noqa: F401,F403
 from launch_vehicle import loads as L, trajectory as tj, wind as W
 
-import atexit
-import pathlib
-import shutil
-import tempfile
 
-TMP = pathlib.Path(tempfile.mkdtemp(prefix="lv_wind_"))
-atexit.register(shutil.rmtree, TMP, True)
+from scratch import Scratch
+
+TMP = Scratch("lv_wind_")
 PROFILES = os.path.join(ROOT, "examples", "wind_profiles")
 
 _C = {}

@@ -20,13 +20,10 @@ from launch_vehicle import vehicle_import as vi
 from launch_vehicle.config_io import load_design
 from launch_vehicle.convergence import size_vehicle
 
-import atexit
-import pathlib
-import shutil
-import tempfile
 
-TMP = pathlib.Path(tempfile.mkdtemp(prefix="lv_imp_"))
-atexit.register(shutil.rmtree, TMP, True)
+from scratch import Scratch
+
+TMP = Scratch("lv_imp_")
 SHEET = os.path.join(ROOT, "examples", "example_vehicle_sheet.csv")
 
 _C = {}

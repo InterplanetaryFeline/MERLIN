@@ -271,8 +271,6 @@ INPUTS = {
     "assembly": ("vertical_then_move", "-", "How the vehicle is assembled", "Sets the ground-operations factor "
                  "(Koelle p.158)", "assumed"),
 }
-ELEMENT_FIELDS = {"f1": "Development status f1", "f2": "Technical quality f2", "f3": "Team experience f3",
-                  "existing": "Already developed"}
 _ELEMENT_KEY = re.compile(r"^(stage\d+_(?:engine|vehicle|motor)|boosters)_(f1|f2|f3|existing)$")
 
 F1_GUIDE = ("f1: 1.3-1.4 first of its kind, 1.1-1.2 new design with new features, 0.9-1.1 standard, "
@@ -354,10 +352,6 @@ class CostEstimate:
     comparables: list = field(default_factory=list)
     inputs: dict = field(default_factory=dict)
     notes: list = field(default_factory=list)
-
-    @property
-    def per_flight_central_usd(self):
-        return self.flight_usd
 
     def usd(self, wyr):
         return wyr * self.work_year_usd

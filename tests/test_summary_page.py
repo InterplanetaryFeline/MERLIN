@@ -15,13 +15,10 @@ from launch_vehicle.main import _studies
 from launch_vehicle.config_io import load_design
 from launch_vehicle.convergence import size_vehicle
 
-import atexit
-import pathlib
-import shutil
-import tempfile
 
-TMP = pathlib.Path(tempfile.mkdtemp(prefix="lv_sum_"))
-atexit.register(shutil.rmtree, TMP, True)
+from scratch import Scratch
+
+TMP = Scratch("lv_sum_")
 _C = {}
 
 

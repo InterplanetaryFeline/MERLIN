@@ -17,10 +17,6 @@ import math
 import os
 import struct
 
-import atexit
-import pathlib
-import shutil
-import tempfile
 
 import pytest
 from helpers import *                                        # noqa: F401,F403
@@ -29,8 +25,9 @@ from launch_vehicle import cad_export as cad
 
 # The suite's runner passes no fixtures, so one scratch directory stands in for pytest's tmp_path.
 # Every test below writes a distinct filename into it.
-TMP = pathlib.Path(tempfile.mkdtemp(prefix="lv_cad_"))
-atexit.register(shutil.rmtree, TMP, True)
+from scratch import Scratch
+
+TMP = Scratch("lv_cad_")
 
 
 # Every reader below parses a file the writers emit with `{value:.6f}`, so a coordinate that survives the

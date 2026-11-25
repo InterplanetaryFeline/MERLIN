@@ -2400,6 +2400,8 @@ function render() {
                             + "vehicle — read them as a diagnosis, not as a result."})]);
         if (ss.status) box.append(el("div", {class: "small", style: "margin-top:6px",
                                             text: (notAttempted ? "" : "Why: ") + ss.status}));
+        for (const n of ss.diagnosis || [])
+          box.append(el("div", {class: "small", style: "margin-top:4px", text: n[0].toUpperCase() + n.slice(1) + "."}));
         const missing = (r.studies_empty || []).filter(k => STUDY_TABS[k]);
         if (missing.length) {
           box.append(el("div", {class: "small", style: "margin-top:4px",
@@ -2412,7 +2414,8 @@ function render() {
       if (S.tab === "cost" && ss) costTab(v, ss);
       else if (ss) {
         const rows = Object.entries(ss).filter(([, x]) => x !== null && x !== undefined && typeof x !== "object")
-          .map(([k, x]) => [SUMMARY_LABELS[k] || k.replace(/_/g, " "),
+          .map(([k, x]) => [(SUMMARY_LABELS[k] || k.replace(/_/g, " "))
+                              .replace("the first cutoff", ss.converged === false ? "the end of the flight shown" : "the first cutoff"),
                             typeof x === "number" ? fmt(x, Math.abs(x) < 100 ? 2 : 0)
                               : typeof x === "boolean" ? (x ? "yes" : "no") : String(x)]);
         if (rows.length) v.append(table(["Quantity", "Value"], rows, [1]));

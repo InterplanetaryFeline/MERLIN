@@ -764,11 +764,13 @@ def _trajectory(res, extras, figures):
            'of the orbit, on a turning spherical Earth: no lift, no wind, no attitude dynamics. Speeds below are '
            'relative to the turning Earth unless they say inertial.</div>']
     if not tr.converged:
-        out.append(f'<div class="banner no"><b>The ascent did not close.</b> {_e(tr.status)}</div>')
+        out.append(f'<div class="banner no"><b>The ascent did not close.</b> {_e(tr.status)}.'
+                   + (" The figures below are the closest attempt found, not this vehicle's flight." if tr.closest_attempt
+                      else "") + "</div>")
     rows = [["Outcome", _e(tr.status)],
             ["Way to orbit", _e(tr.profile_why)],
             ["Pitch kick", f"{tr.kick_deg:.3f} deg after a {tr.vertical_rise_s:.0f} s vertical rise"],
-            ["First cutoff", f"{_f(tr.burnout_v_mps)} m/s at {tr.burnout_h_m/1e3:,.1f} km, flight path angle "
+            ["First cutoff" if tr.converged else "End of the flight shown", f"{_f(tr.burnout_v_mps)} m/s at {tr.burnout_h_m/1e3:,.1f} km, flight path angle "
                              f"{tr.burnout_gamma_deg:+.2f} deg, {tr.burnout_t_s:,.0f} s after lift-off"],
             *([["Second burn", f"{_f(tr.second_burn_dv_mps)} m/s, ending {tr.final_state['t_s']:,.0f} s after lift-off"]]
               if tr.second_burn_dv_mps else []),
@@ -776,7 +778,7 @@ def _trajectory(res, extras, figures):
                 + (f", {_f(tr.propellant_left_kg)} kg of propellant left in the last stage"
                    if tr.propellant_left_kg > 0 else "")]] if tr.converged else []),
             *_orbit_rows(tr),
-            ["Downrange at the first cutoff", f"{tr.downrange_m/1e3:,.0f} km"],
+            ["Downrange at the first cutoff" if tr.converged else "Downrange at the end", f"{tr.downrange_m/1e3:,.0f} km"],
             ["Max dynamic pressure", f"{tr.max_q_Pa/1e3:,.1f} kPa at {tr.max_q_t_s:,.0f} s, "
                                      f"{tr.max_q_h_m/1e3:.1f} km, Mach {tr.max_q_mach:.2f}"],
             ["Peak axial acceleration", f"{tr.max_accel_g:.2f} g"],
@@ -786,7 +788,7 @@ def _trajectory(res, extras, figures):
                     "<b>Figure T.</b> The ascent: altitude and speed, flight path angle and dynamic pressure "
                     "(the book's own checklist on p.379), the ground track with its events, and the loss budget "
                     "the integration produced."))
-    out.append("<h3>Loss budget to the first cutoff, computed rather than fitted (book Eq. 6:58)</h3>")
+    out.append(f"<h3>Loss budget to the {'first cutoff' if tr.converged else 'end of the flight shown'}, computed rather than fitted (book Eq. 6:58)</h3>")
     tot = tr.total_loss_mps or 1.0
     lrows = [["Gravity loss", _f(tr.gravity_loss_mps, 1), f"{100*tr.gravity_loss_mps/tot:.1f}",
               "&int; g sin&gamma; dt - the cost of climbing"],

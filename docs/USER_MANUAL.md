@@ -616,7 +616,9 @@ number. On the shipped default, choosing Merlin 1D takes it from 397,246 kg to 3
 
 **An ascent that does not close says so first.** When no steering brings the vehicle level at its insertion altitude, the
 Trajectory tab leads with a red banner and the reason: usually an upper stage with too little thrust, which falls faster
-than it gains speed. The charts below then describe the failed attempt, and the analyses that need a flown ascent are
+than it gains speed. The charts below then show the closest attempt found, the one on the highest perigee when it falls back
+through 100 km or its last stage stops, and the banner says how fast and how steep that is against what the first orbit
+needs. The analyses that need a flown ascent are
 listed as having produced nothing. The sizing is unaffected unless the ascent-loss method is *simulated* (§7.5).
 
 **Strap-on boosters are the other shape control**, directly under the stage count, for the same reason: a

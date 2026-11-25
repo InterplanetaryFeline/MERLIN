@@ -23,18 +23,15 @@ import math
 import os
 import sys
 
-import atexit
-import pathlib
-import shutil
-import tempfile
 
 import pytest
 from helpers import *                                        # noqa: F401,F403
 from launch_vehicle import cad_export as ce
 from launch_vehicle import cad_kernel as ck
 
-TMP = pathlib.Path(tempfile.mkdtemp(prefix="lv_kernel_"))
-atexit.register(shutil.rmtree, TMP, True)
+from scratch import Scratch
+
+TMP = Scratch("lv_kernel_")
 
 BOOST = os.path.join(ROOT, "examples", "example_boosters.yaml")
 

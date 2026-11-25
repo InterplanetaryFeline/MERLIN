@@ -167,6 +167,41 @@ def test_an_upper_stage_too_weak_to_hold_itself_up_is_diagnosed():
     assert t.t_s, "a failed attempt still has a history to look at"
 
 
+def test_a_failed_ascent_shows_its_closest_attempt():
+    """It once showed the first kick tried: Atlas V went almost straight up, to 1,450 km."""
+    res, t = flown("atlas5_551")
+    assert not t.converged and t.closest_attempt and t.insertion["verdict"] == "no_ascent"
+    assert t.notes[0].startswith("the flight shown is the closest attempt found")
+    assert f"{t.burnout_h_m/1e3:,.0f} km" in t.notes[0]
+    # it turns over: it ends going downrange, out of the air, with less speed than the first orbit needs
+    assert t.burnout_h_m > 90e3 and abs(t.burnout_gamma_deg) < 45.0
+    assert 3000.0 < t.burnout_v_mps < 7700.0
+    assert t.closure_residual_mps == pytest.approx(0.0, abs=20.0)
+
+
+def test_no_other_steering_tried_by_hand_beats_the_closest_attempt():
+    """Delta II, steerings off the search's own grid: none is on a higher perigee where it falls back."""
+    import math
+    res = sized("delta2_7920")
+    f = ascent.flight_for(res, tj.ascent_vehicle_from_result(res))
+    f.grids_left = 0
+    best = f.closest(f.search()[1])
+    f.stop_below = ascent.CLOSEST_FLOOR_M
+
+    def perigee(sol):
+        s, why = f.atmosphere_leg(sol.kick_deg)
+        assert why == "handover"
+        sol.tref = f.remaining_time(s)
+        f.attempt(s, sol, 5.0)
+        return f.apses(s)[0]
+    top = perigee(best)
+    for kick in (0.05, 0.08, 0.1):
+        for a in (5, 22, 38, 55):
+            for b in (-25, 0, 25, 47, 63):
+                p = perigee(ascent.Solution(kick, math.tan(math.radians(a)), math.tan(math.radians(b))))
+                assert p < top + 20e3, (kick, a, b)
+
+
 def test_a_heavier_vehicle_has_less_to_spare():
     res = sized("default")
     veh = tj.ascent_vehicle_from_result(res)

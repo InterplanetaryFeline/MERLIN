@@ -143,6 +143,7 @@ def draw_trajectory(tr, path_png=None, path_pdf=None, title=""):
     (a1, a2), (a3, a4) = axes
     n = max(2, sum(1 for x in tr.t_s if x <= tr.burnout_t_s + 1e-6))
     t = tr.t_s[:n]
+    end = "first cutoff" if tr.converged else "end of the flight shown"
 
     a1.plot(t, [h / 1e3 for h in tr.h_m[:n]], color=ACC, lw=1.7, label="altitude")
     a1.set_xlabel("time [s]"); a1.set_ylabel("altitude [km]", color=ACC)
@@ -169,7 +170,7 @@ def draw_trajectory(tr, path_png=None, path_pdf=None, title=""):
     a3.plot(xs_km, hs_km, color=ACC, lw=1.7)
     _label_events(a3, tr, xs_km, hs_km)
     a3.set_xlabel("downrange [km]"); a3.set_ylabel("altitude [km]"); a3.grid(alpha=0.3)
-    a3.set_title(f"Ground track - {tr.downrange_m/1e3:,.0f} km downrange at the first cutoff", fontsize=10)
+    a3.set_title(f"Ground track - {tr.downrange_m/1e3:,.0f} km downrange at the {end}", fontsize=10)
 
     names = ["gravity", "drag", "propulsion\n(back pressure)", "steering"]
     vals = [tr.gravity_loss_mps, tr.drag_loss_mps, tr.propulsion_loss_mps, tr.steering_loss_mps]
@@ -178,13 +179,15 @@ def draw_trajectory(tr, path_png=None, path_pdf=None, title=""):
     for b, v in zip(bars, vals[::-1]):
         a4.text(v, b.get_y() + b.get_height() / 2, f" {v:,.0f}", va="center", fontsize=8.5)
     a4.set_xlabel("delta-v lost [m/s]")
-    a4.set_title(f"Losses to the first cutoff: {tr.total_loss_mps:,.0f} m/s of a {tr.ideal_dv_mps:,.0f} m/s vacuum ideal",
+    a4.set_title(f"Losses to the {end}: {tr.total_loss_mps:,.0f} m/s of a {tr.ideal_dv_mps:,.0f} m/s vacuum ideal",
                  fontsize=10)
     a4.grid(alpha=0.25, axis="x")
     a4.set_xlim(right=1.14 * max(max(vals), 1.0))
 
     fig.suptitle(title or f"{tr.vehicle_name} - ascent trajectory", fontsize=11.5, y=0.985)
-    fig.text(0.5, 0.946, f"first cutoff {tr.burnout_v_mps:,.0f} m/s at {tr.burnout_h_m/1e3:.0f} km, "
+    failed = ("" if tr.converged else "the ascent does not close; closest attempt: " if tr.closest_attempt
+              else "the ascent does not close: ")
+    fig.text(0.5, 0.946, f"{failed}{end} {tr.burnout_v_mps:,.0f} m/s at {tr.burnout_h_m/1e3:.0f} km, "
                          f"gamma {tr.burnout_gamma_deg:+.1f} deg, t = {tr.burnout_t_s:.0f} s"
                          + (f"; second burn of {tr.second_burn_dv_mps:,.0f} m/s ends at "
                             f"{tr.final_state['t_s'] / 60.0:,.0f} min" if tr.second_burn_dv_mps else "")

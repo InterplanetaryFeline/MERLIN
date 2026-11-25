@@ -34,7 +34,12 @@ second burn needs less.
 altitude and a level arrival. A damped Newton iteration finds them, starting in vacuum when it has nothing better to start
 from. The pitch kick is what is left, and it is chosen for the most speed in hand at the end: kicks are spread over the flight
 path angle they reach the hand-over with, because a slow lift-off makes the turn depend on the kick exponentially. A flight
-takes about a second.
+takes about a second; a vehicle that fails takes 5 to 30.
+
+**When nothing closes** there is no orbit to report, so the closest attempt is flown and shown: over pitch kicks and steering
+constants (a grid, then a pattern search), the one on the highest perigee when its last stage stops or when it falls back
+through 100 km (ASSUMED). It is a diagnosis and not proof that no better one exists. Until then the first kick tried was shown,
+which for Ariane 64 and Atlas V went almost straight up to 1,500 km.
 
 **Ways to orbit.** `auto` goes straight in up to 200 km. Higher, it inserts at 185 km (an input) on an ellipse whose top is the
 target, coasts there and burns level. A high apogee is left from a circular parking orbit, along the velocity, at the next

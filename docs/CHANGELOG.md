@@ -3,9 +3,13 @@
 Newest first. Entries are kept as written at each release, so what they say about the tool's limits and numbers
 was true of that version. [`ACCURACY.md`](ACCURACY.md) has the current measurements.
 
-**What changed in v1.3.0 - an ascent flown to orbit, and the cost model in work-years**
+**What changed in v1.3.0 - trajectory and cost modules reworked**
 
-*Not released yet.*
+This release changes two modules. **The trajectory module is rebuilt**: an ascent is now steered, staged, coasted and cut off
+on the way to its orbit instead of being flown as one burn. **The cost module is corrected and reworked**: it calculates in
+work-years and has its own tab. Trajectory and cost figures differ from v1.2.1. The sizing gives the same masses, except for
+designs whose first stage gave no sea-level Isp, splits optimised for lowest development cost, and designs that choose the new
+simulated-loss method.
 
 *The ascent is flown to orbit.* It was one continuous burn, straight to the target altitude, on a gravity turn, on an Earth
 that does not turn. It is now linear tangent steering above the air (book Eq. 6:59), solved to arrive level; the engine stops
@@ -26,6 +30,9 @@ flight, and lets the split search see them ([`ASCENT.md`](ASCENT.md)).
 was sized as if its vacuum thrust lifted it off: `example_htp_kerolox` reported 1.35 and flew 0.92, and is now sized
 for 1.35, with 31 % more thrust. Electron, which gives one Isp for both conditions, reported 1.49
 and flew 1.15. A coast between stages no longer counts as a moment with no control authority.
+
+*An ascent that does not close shows its closest attempt*, with how far it was from the first orbit. It showed the first one
+tried, which could be nearly vertical.
 
 *Corrections to the cost model.* Development cost was wrong in six ways. The engine relation was given the mass of a whole cluster
 instead of one engine (2.4 times too much for six). The systems-engineering factor was 1.043 instead of 1.04 to the
