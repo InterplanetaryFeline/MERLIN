@@ -85,15 +85,6 @@ def test_geo_direct_circularisation_delta_v():
     assert vc - el.v_apogee_ms == pytest.approx(1470.0, rel=0.03)
 
 
-def test_gto_does_not_include_spacecraft_apogee_maneuver_in_total():
-    spec = default_spec()
-    m = dict(spec.mission, **USER, orbit_type="GTO", perigee_altitude_m=185e3, apogee_altitude_m=35786e3, report_apogee_maneuver=True)
-    b = build_budget(E, m)
-    info = [l for l in b.lines if not l.in_total]
-    assert len(info) == 1
-    assert b.total_mps == pytest.approx(sum(l.value_mps for l in b.lines if l.in_total), rel=1e-12)
-
-
 def test_unsupported_orbit_and_missing_apogee_raise():
     spec = default_spec()
     with pytest.raises(o.OrbitError):

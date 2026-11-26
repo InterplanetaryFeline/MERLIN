@@ -331,10 +331,14 @@ solid_propellants:
   PBAN_AP_AL:
     density_kg_m3: {v: 1690.0, u: "kg/m^3", d: "Composite propellant: NH4ClO4 + 18 % polymer + 4-20 % Al (Shuttle SRB class)", s: "Book Table 4.7 row 2, p.238", t: reference}
     isp_note: {v: "Table 4.7 gives Isp 262 s and c* 1,590 m/s; Table 4.2 gives the Shuttle SRM 242 s SL / 262 s vacuum", u: "-", d: "Reference performance", s: "Book Tables 4.2/4.7", t: reference}
+    c_star_mps: {v: 1590.0, u: m/s, d: "Characteristic exhaust speed. Used by the internal-ballistics solution to close P_c = [rho a c* A_b/A_t]^(1/(1-n)); also the c* that Eq. 8:28 sizes the throat with", s: "Book Table 4.7 row 2, p.238", t: reference}
+    burn_rate_exponent: {v: 0.35, u: "-", d: "Pressure exponent n in de Saint Robert's law r = a Pc^n. The book gives the typical range 0.4-0.7 and warns that n > 1 is unstable (p.231); set equal to the HTPB entry's; this value is an ASSUMPTION, not a measured property of this propellant. The burning-rate coefficient a is not assumed at all: it is calibrated so the motor delivers its own design chamber pressure", s: "Assumed; book p.231 gives the range but no value for this propellant", t: assumed}
     source: {v: "Edberg & Costa Table 4.7 (p.238)", u: "-", d: "Provenance", s: "Book", t: reference}
   AN_COMPOSITE:
     density_kg_m3: {v: 1510.0, u: "kg/m^3", d: "Ammonium-nitrate composite: NH4NO3 + 11 % binder + 7 % additives (low performance, low smoke)", s: "Book Table 4.7 row 1, p.238", t: reference}
     isp_note: {v: "Table 4.7 gives Isp 192 s and c* 1,209 m/s", u: "-", d: "Reference performance", s: "Book Table 4.7, p.238", t: reference}
+    c_star_mps: {v: 1209.0, u: m/s, d: "Characteristic exhaust speed. Used by the internal-ballistics solution to close P_c = [rho a c* A_b/A_t]^(1/(1-n)); also the c* that Eq. 8:28 sizes the throat with", s: "Book Table 4.7 row 1, p.238", t: reference}
+    burn_rate_exponent: {v: 0.35, u: "-", d: "Pressure exponent n in de Saint Robert's law r = a Pc^n. The book gives the typical range 0.4-0.7 and warns that n > 1 is unstable (p.231); set equal to the HTPB entry's; this value is an ASSUMPTION, not a measured property of this propellant. The burning-rate coefficient a is not assumed at all: it is calibrated so the motor delivers its own design chamber pressure", s: "Assumed; book p.231 gives the range but no value for this propellant", t: assumed}
     source: {v: "Edberg & Costa Table 4.7 (p.238)", u: "-", d: "Provenance", s: "Book", t: reference}
 
 tank_materials:

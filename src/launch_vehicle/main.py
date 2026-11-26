@@ -19,14 +19,16 @@ from . import cost as cost_mod, payload_env as payload_env_mod, studies as studi
 from . import cad_export, vehicle_import, wind as wind_mod
 
 
-def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, applied_opt=None):
+def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, applied_opt=None, prior=None, overrides=None):
     """The optional studies that add their own report sections: R1 performance curves, R3 uncertainty, R4 the
     staging optimum. Each one is independent; a failure in one is reported and never stops the run."""
     # Every study writes a chart into outdir. run() creates it, but the GUI, the tests and the trade driver
     # all call this directly, and a missing directory turned into a per-study "skipped" that looked like the
     # study itself had failed.
     os.makedirs(outdir, exist_ok=True)
-    extras = {}
+    # `prior`: analyses already run on this same result, which a later one reads (the trajectory, for the loads).
+    # The GUI's wind settings re-run the loads and what depends on them without flying the ascent again.
+    extras = dict(prior or {})
     if "performance" in want:
         if verbose:
             print("  performance curves ...", flush=True)
@@ -173,6 +175,13 @@ def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, appli
                 case = segs[0].tank
                 ps = spec.solid_propellants.get(case.propellant)
                 if ps is None or not ps.c_star_mps or not ps.burn_rate_exponent:
+                    # said on the tab, rather than the stage silently missing from it
+                    miss = [w for w, v in (("c*", getattr(ps, "c_star_mps", 0)),
+                                           ("burn-rate exponent n", getattr(ps, "burn_rate_exponent", 0))) if not v]
+                    profs.append(dict(ok=False, stage=s.index, propellant=case.propellant,
+                                      reason=f"the propellant library gives no {' or '.join(miss)} for "
+                                             f"{case.propellant}, and the burn cannot be solved without inventing "
+                                             f"{'them' if len(miss) > 1 else 'it'}"))
                     continue
                 At = engine_geometry.throat_area(s.thrust_vac_N / max(stx.motor.n_motors, 1), ps.c_star_mps,
                                                  stx.motor.chamber_pressure_Pa, stx.motor.isp_vac_s)
@@ -183,7 +192,7 @@ def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, appli
                 pr["design_burn_time_s"] = s.burn_time_s
                 pr["propellant"] = case.propellant
                 profs.append(pr)
-            if profs:
+            if any(p.get("ok") for p in profs):
                 extras["ballistics"] = profs
                 figs["ballistics_png"] = os.path.join(outdir, "internal_ballistics.png")
                 charts.draw_internal_ballistics(profs, figs["ballistics_png"], None,
@@ -224,6 +233,10 @@ def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, appli
             env = payload_env_mod.build(res, extras.get("trajectory"), extras.get("loads"))
             if env.rows:
                 extras["payload_env"] = env
+                if env.flight:
+                    figs["payload_env_png"] = os.path.join(outdir, "payload_environment.png")
+                    charts.draw_payload_env(env.flight, figs["payload_env_png"], None,
+                                            title=f"{spec.name} - payload environment in flight")
                 if verbose:
                     print(f"  payload environment: {env.design_axial_g:.1f} g axial "
                           f"({env.governing_axial_event}), {env.design_lateral_g:.1f} g lateral")
@@ -243,7 +256,7 @@ def _studies(design, assump, spec, res, outdir, figs, want, n_mc, verbose, appli
         if verbose:
             print(f"  uncertainty: {n_mc} Monte-Carlo samples ...", flush=True)
         try:
-            mc = uncertainty.monte_carlo(design, assump, n=n_mc)
+            mc = uncertainty.monte_carlo(design, assump, n=n_mc, overrides=overrides, base_spec=res.spec)
             extras["uncertainty"] = mc
             figs["uncertainty_png"] = os.path.join(outdir, "uncertainty.png")
             charts.draw_uncertainty(mc, figs["uncertainty_png"], None,

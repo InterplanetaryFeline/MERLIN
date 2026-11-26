@@ -86,11 +86,17 @@ def test_the_calibration_hits_the_design_pressure_exactly():
 
 # ====================================================================== burning area from the grain geometry
 def test_core_burn_area_is_the_bore_surface_of_the_barrel():
-    """For a bore through the barrel only, -dV/dw reduces to 2 pi (R_bore + w) h_cyl."""
+    """For a bore through the barrel only, -dV/dw is its side, 2 pi (R_bore + w) h_cyl, plus its two flat ends
+    burning into the domes, each the disc where the end face meets the dome at depth w."""
     d = solid_case()
     case = d["case"]
+    assert not case.bore_full_length
     for w in (0.0, 0.05, 0.15):
-        want = 2 * math.pi * (case.R_bore + w) * case.h_cyl
+        r = case.R_bore + w
+        zb = case.h_dome * math.sqrt(max(1.0 - (r / case.R_int) ** 2, 0.0))
+        rho_w = case.R_int * math.sqrt(max(1.0 - (w / case.h_dome) ** 2, 0.0))
+        # the bore's side inside each dome, as deep as its end has burned (to where it meets the dome wall)
+        want = (2 * math.pi * r * (case.h_cyl + 2 * min(w, zb)) + 2 * math.pi * min(r, rho_w) ** 2)
         assert sm.burn_area_m2(case, w) == pytest.approx(want, rel=0.02)
 
 
@@ -98,10 +104,13 @@ def test_a_cylindrical_bore_is_progressive_as_the_book_says():
     """p.233: "A grain with a cylindrical cutout will produce thrust levels that increase with time"."""
     p = profile()
     assert p["ok"] and p["progressive"]
-    assert p["thrust_final_N"] > p["thrust_initial_N"]
-    areas = [pt["A_b_m2"] for pt in p["points"]]
-    assert areas == sorted(areas), "the burning surface only grows"
-    thrusts = [pt["thrust_N"] for pt in p["points"]]
+    assert p["thrust_web_burnout_N"] > p["thrust_initial_N"]
+    # it grows to its peak; near the end the bore's ends meet the curved dome wall and it eases, and once the
+    # side reaches the case wall only the dome ends are left and it falls away
+    main = [pt for pt in p["points"] if pt["t_s"] <= p["thrust_peak_t_s"]]
+    areas = [pt["A_b_m2"] for pt in main]
+    assert areas == sorted(areas), "the burning surface grows through the main burn"
+    thrusts = [pt["thrust_N"] for pt in main]
     assert thrusts == sorted(thrusts)
 
 
@@ -119,7 +128,21 @@ def test_an_end_burner_is_neutral_as_the_book_says():
 def test_the_burning_area_vanishes_when_the_web_is_gone():
     d = solid_case()
     case = d["case"]
-    assert sm.burn_area_m2(case, case.R_int - case.R_bore + 1e-6) == 0.0
+    assert sm.burn_area_m2(case, sm.burn_web_m(case) + 1e-6) == 0.0
+
+
+def test_the_whole_grain_burns_including_the_domes():
+    """Only the bore used to widen, so the dome propellant never burned: Scout's third stage consumed 597 kg of a
+    985 kg grain. The bore's ends burn into the domes now, and the profile burns what was loaded."""
+    d = solid_case()
+    p = profile()
+    loaded = d["prop"].density_kg_m3 * sm.grain_volume(d["case"].R_int, d["case"].h_dome, d["case"].h_cyl, d["case"].R_bore,
+                                        d["case"].bore_full_length)
+    assert p["mass_burned_kg"] == pytest.approx(loaded, rel=0.01)
+    assert p["total_impulse_Ns"] == pytest.approx(loaded * 9.80665 * d["motor"].isp_vac_s, rel=0.01)
+    assert sm.regressed_grain_volume(d["case"], 0.0) == pytest.approx(loaded / d["prop"].density_kg_m3, rel=1e-9)
+    assert sm.regressed_grain_volume(d["case"], sm.burn_web_m(d["case"])) == pytest.approx(0.0, abs=1e-9)
+    assert 0.0 <= p["tail_fraction"] < 0.5 and p["web_burnout_t_s"] <= p["burn_time_s"]
 
 
 def test_burn_time_comes_from_integrating_dw_over_the_burn_rate():
@@ -142,7 +165,7 @@ def test_the_simplest_grain_cannot_deliver_the_constant_thrust_the_sizing_assume
     cylindrical bore delivers a profile that rises by a factor of several and takes the chamber pressure well
     past its design value, which the casing was not sized for."""
     d, p = solid_case(), profile()
-    assert p["thrust_final_N"] / p["thrust_initial_N"] > 3.0
+    assert p["thrust_web_burnout_N"] / p["thrust_initial_N"] > 3.0
     assert p["pc_max_Pa"] > 1.5 * p["pc_design_Pa"]
     assert p["Kn_max"] > 2 * p["Kn_min"]
 
@@ -183,3 +206,31 @@ def test_a_higher_exponent_makes_the_profile_more_extreme():
     low = sm.burn_profile(*args, 0.2, d["A_t"], 6e6, 282.0)
     high = sm.burn_profile(*args, 0.6, d["A_t"], 6e6, 282.0)
     assert high["pc_max_Pa"] / high["pc_min_Pa"] > low["pc_max_Pa"] / low["pc_min_Pa"]
+
+
+def test_every_shipped_solid_propellant_can_be_flown():
+    """Scout's first two stages burn PBAN, whose c* sat only in a text note, so they vanished from the tab. Every
+    propellant in the library carries the two numbers the burn needs: c* from the book, the exponent assumed."""
+    import yaml
+    with open("config/engineering_assumptions.yaml", encoding="utf-8") as fh:
+        lib = yaml.safe_load(fh)["solid_propellants"]
+    for name, p in lib.items():
+        assert p["c_star_mps"]["v"] > 0 and p["c_star_mps"]["t"] == "reference", name
+        assert 0 < p["burn_rate_exponent"]["v"] < 1 and p["burn_rate_exponent"]["t"] == "assumed", name
+
+
+def test_scout_shows_all_four_stages():
+    from launch_vehicle.main import _studies
+    import os
+    import tempfile
+    spec = load_design("validation/scout_g1.yaml", "config/engineering_assumptions.yaml")
+    res = size_vehicle(spec)
+    with tempfile.TemporaryDirectory() as tmp:
+        ex = _studies("validation/scout_g1.yaml", "config/engineering_assumptions.yaml", spec, res, tmp, {},
+                      {"ballistics"}, 0, False)
+    got = {p["stage"]: p for p in ex["ballistics"]}
+    assert sorted(got) == [1, 2, 3, 4] and all(p["ok"] for p in got.values())
+    # near the sized burn time: across six solid vehicles, sized from the file and optimised, it measured
+    # 0.93-1.22 of it with the design pressure matched over the propellant
+    for p in got.values():
+        assert 0.85 < p["action_time_s"] / p["design_burn_time_s"] < 1.30, p["stage"]

@@ -280,6 +280,23 @@ def read_any(path, **kw) -> WindProfile:
     raise WindError(f"{path}: wind profiles are read from .csv or .xlsx")
 
 
+def shipped_profiles() -> list:
+    """The profiles a user can pick without a file of their own: the book's envelope and the shipped examples, each
+    as (value to put in the design, label, kind). The examples are named from the project folder."""
+    from .paths import ROOT as _root
+    out = [(BOOK_AMR_95, "Book: Atlantic Missile Range 95 % envelope (Fig. 9.35)", "gust_envelope")]
+    for f in sorted(glob.glob(os.path.join(_root, "examples", "wind_profiles", "*.csv"))):
+        rel = os.path.relpath(f, _root).replace(os.sep, "/")
+        try:
+            pr = read_csv(f)
+        except WindError:
+            continue
+        if pr.name.startswith("book_amr_95"):
+            continue                                  # the same curve as the built-in, written out as a file
+        out.append((rel, f"{pr.name.replace('_', ' ')} ({pr.source or pr.kind})", pr.kind))
+    return out
+
+
 def load(spec_or_block, root: str = ".") -> list:
     """Resolve a design's `wind:` block into a list of profiles. Always returns at least one.
 
@@ -300,6 +317,11 @@ def load(spec_or_block, root: str = ".") -> list:
             continue
         p = r if os.path.isabs(r) else os.path.join(root, r)
         matches = sorted(glob.glob(p)) if any(c in p for c in "*?[") else [p]
+        if not os.path.isabs(r) and not any(os.path.exists(m) for m in matches):
+            # a path written from the project folder - the shipped examples/wind_profiles/ - works from any design
+            from .paths import ROOT as _root
+            q = os.path.join(_root, r)
+            matches = sorted(glob.glob(q)) if any(c in q for c in "*?[") else [q]
         if not matches:
             raise WindError(f"wind profile '{r}' matched no file (looked under {root})")
         for m in matches:

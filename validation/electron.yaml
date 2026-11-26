@@ -33,12 +33,6 @@ mission:
     d: If non-null, replaces the whole budget total (testing / design studies only)
     s: User override
     t: user
-  report_apogee_maneuver:
-    v: false
-    u: '-'
-    d: Report GTO->GEO apogee maneuver as informational line
-    s: Option
-    t: user
   orbit:
     type:
       v: LEO

@@ -82,6 +82,17 @@ def equivalent_three_stage_time_s(dv_parking_mps: float, isp_s: float, accel0_mp
     return 3.0 * c / accel0_mps2 * (1.0 - math.exp(-dv_parking_mps / (3.0 * c)))
 
 
+class LossModelError(ValueError):
+    """A loss-model input that cannot be used. `field` is the input to change, for the GUI."""
+
+    def __init__(self, message, field: str = "mission.losses.model"):
+        super().__init__(message)
+        self.field = field
+
+
+#: geostationary altitude above the equator, 35,786 km: the radius where an orbit's period is one sidereal day
+GEO_ALT_M = 35786e3
+
 # Table 3.2 (p.177) two-stage loss shares of dv_ideal, used ONLY to present an indicative split of the lumped penalty.
 TABLE_3_2_SHARES = dict(gravity=1527.0, drag=116.0, steering=115.0, propulsion=77.0)
 
@@ -101,9 +112,21 @@ def build_budget(earth: EarthModel, m: dict, ascent: dict | None = None) -> Delt
         apogee, ecc = perigee, None
     elif otype in ("GTO", "GEO_VIA_GTO", "GEO_DIRECT"):
         if apogee is None and ecc is None:
-            raise orb.OrbitError(f"{otype} needs an apogee altitude (e.g. 35786 km) or eccentricity")
+            raise orb.OrbitError(f"{otype} needs an apogee altitude (e.g. 35786 km) or eccentricity",
+                                 field="mission.orbit.apogee_altitude_km",
+                                 options=[{"label": "Set the apogee to 35,786 km", "path": "mission.orbit.apogee_altitude_km",
+                                           "value": 35786.0, "note": "geostationary altitude"},
+                                          {"label": "Change the orbit type to LEO", "path": "mission.orbit.type",
+                                           "value": "LEO", "note": "a circular orbit at the perigee altitude"}])
+        if otype.startswith("GEO") and apogee is not None and abs(apogee - GEO_ALT_M) > 50e3:
+            raise orb.OrbitError(f"{otype} goes to geostationary orbit, at 35,786 km, but the apogee is "
+                                 f"{apogee / 1e3:,.0f} km", field="mission.orbit.apogee_altitude_km",
+                                 options=[{"label": "Set the apogee to 35,786 km", "path": "mission.orbit.apogee_altitude_km",
+                                           "value": 35786.0, "note": "geostationary altitude"},
+                                          {"label": "Change the orbit type to CUSTOM", "path": "mission.orbit.type",
+                                           "value": "CUSTOM", "note": "keeps the apogee you gave"}])
     elif otype != "CUSTOM":
-        raise orb.OrbitError(f"unsupported orbit type {otype}")
+        raise orb.OrbitError(f"unsupported orbit type {otype}", field="mission.orbit.type")
 
     el = orb.orbit_from_altitudes(earth, perigee, apogee, ecc, inc)
     if otype == "SSO":
@@ -138,13 +161,6 @@ def build_budget(earth: EarthModel, m: dict, ascent: dict | None = None) -> Delt
         b.lines.append(BudgetLine("Apogee circularisation + plane change (ideal)", dv, "maneuver",
                                   "Vector-difference burn at apogee (supplementary); needs restartable upper stage; "
                                   "coast and finite-burn losses of that burn not modelled"))
-    elif otype in ("GTO", "GEO_VIA_GTO") and m.get("report_apogee_maneuver"):
-        v_c = orb.circular_speed(el.r_a_m, earth.mu_m3s2)
-        di = math.radians(inc)
-        dv = math.sqrt(el.v_apogee_ms ** 2 + v_c ** 2 - 2 * el.v_apogee_ms * v_c * math.cos(di))
-        b.lines.append(BudgetLine("Apogee circularisation + plane change (spacecraft; informational)", dv, "maneuver",
-                                  "Excluded from launch-vehicle total: performed by spacecraft apogee motor",
-                                  in_total=False))
 
     al = m.get("air_launch")
     if al:
@@ -161,10 +177,10 @@ def build_budget(earth: EarthModel, m: dict, ascent: dict | None = None) -> Delt
 
     model = m.get("loss_model", "user")
     if model in ("book_simple", "book_k1k2") and ascent is None:
-        raise ValueError(f"loss model '{model}' needs ascent-time information from the sizing loop")
+        raise LossModelError(f"loss model '{model}' needs ascent-time information from the sizing loop")
     if model == "book_simple":
         if otype not in ("LEO", "SSO"):
-            raise ValueError("loss model 'book_simple' (Eq. 3:32) is defined for circular orbits only")
+            raise LossModelError("loss model 'book_simple' (Eq. 3:32) is defined for circular orbits only")
         sm = simple_total_mps(orb.circular_speed(el.r_p_m, earth.mu_m3s2), perigee, ascent["t_ascent_s"], earth.radius_m)
         b.info["loss_model"] = dict(sm, T_ascent_s=ascent["t_ascent_s"])
         # replace the ideal line with the equation's own energy-form speed so the budget is not double counted
@@ -184,7 +200,7 @@ def build_budget(earth: EarthModel, m: dict, ascent: dict | None = None) -> Delt
         b.lines.append(BudgetLine("Other allowances (reserves, extra)", m["other_allowance_mps"] or 0.0, "allowance", "User-defined"))
     elif model == "book_penalty":
         if ascent is None:
-            raise ValueError("book_penalty loss model needs ascent-time information from the sizing loop")
+            raise LossModelError("book_penalty loss model needs ascent-time information from the sizing loop")
         hp_km = m["perigee_altitude_m"] / 1e3
         # Eq. 3:36 divides by the lift-off acceleration, so an intermediate design that cannot lift off would
         # produce an unbounded equivalent burn time and make the sizing loop diverge. The regression only means
@@ -211,7 +227,7 @@ def build_budget(earth: EarthModel, m: dict, ascent: dict | None = None) -> Delt
         b.lines.append(BudgetLine("Other allowances (reserves, extra)", m["other_allowance_mps"] or 0.0, "allowance", "User-defined"))
     elif model == "simulated":
         if m.get("simulated_loss_mps") is None:
-            raise ValueError("loss model 'simulated' needs the flown losses, which the sizing loop supplies")
+            raise LossModelError("loss model 'simulated' needs the flown losses, which the sizing loop supplies")
         b.lines.append(BudgetLine("Ascent losses of the simulated flight (gravity, drag, steering, back pressure, coast "
                                   "and second burn)", m["simulated_loss_mps"], "loss",
                                   "SUPPLEMENTARY: the ideal speed the flown ascent took to the orbit, less the lines above"))
@@ -224,10 +240,10 @@ def build_budget(earth: EarthModel, m: dict, ascent: dict | None = None) -> Delt
             ("other_allowance_mps", "Other allowances (propulsion loss, reserves)", "User-defined; Example 3.9 'propulsion loss'"),
         ):
             if m.get(key) is None:
-                raise ValueError(f"loss model 'user' needs mission.losses.{key}")
+                raise LossModelError(f"loss model 'user' needs mission.losses.{key}", field=f"mission.losses.{key}")
             b.lines.append(BudgetLine(label, m[key], "allowance" if key == "other_allowance_mps" else "loss", src))
     else:
-        raise ValueError(f"unknown loss model '{model}' (use 'book_penalty', 'book_k1k2', 'book_simple', 'simulated' or 'user')")
+        raise LossModelError(f"unknown loss model '{model}' (use 'book_penalty', 'book_k1k2', 'book_simple', 'simulated' or 'user')")
 
     base = b.total_mps
     marg = m["design_margin_fraction"] * base

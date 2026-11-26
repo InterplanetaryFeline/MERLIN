@@ -1013,7 +1013,7 @@ def test_every_results_table_sorts_and_keeps_its_totals_at_the_bottom():
 
 def test_the_mass_ledger_filters_by_stage_and_group_and_can_leave_out_propellant():
     page = _page()
-    for probe in ("S.ledgerFilter", '" leave out propellant"', '"% shown", "% lift-off"', '"Total shown"'):
+    for probe in ("S.ledgerFilter", '" leave out propellant"', '"% shown", "% lift-off"', '"Total shown at lift-off"'):
         assert probe in page, probe
 
 

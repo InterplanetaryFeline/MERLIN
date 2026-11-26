@@ -206,7 +206,6 @@ Overrides on the command line and in code use dotted paths into the *unwrapped* 
 | `payload_adapter_mass_kg` | PAF mass; `null` uses the MER `0.0755 m_PL + 50 kg` (Table 8.8). |
 | `payload_envelope_diameter_m`, `payload_envelope_length_m` | Static envelope; must fit inside the fairing with the radial clearance. |
 | `delta_v_override_mps` | Replaces the whole budget with one number (study/testing only). |
-| `report_apogee_maneuver` | For GTO, report the spacecraft's apogee burn as an informational line. |
 | `orbit.type` | `LEO`, `SSO`, `GTO`, `GEO_VIA_GTO`, `GEO_DIRECT`, `CUSTOM`. |
 | `orbit.perigee_altitude_km`, `apogee_altitude_km`, `eccentricity` | Injection orbit. LEO/SSO are circular. |
 | `orbit.inclination_deg` | Target inclination; computed from J2 for `SSO`. Must be ≥ the launch-site latitude (no dog-legs). |
@@ -474,6 +473,14 @@ cost optimum is not the mass optimum**: on the shipped default, lightest is near
 to develop near 53/47, because development effort is a sum of per-element powers of mass and that sum is not
 minimised by minimising the total. Full detail, including what the search does not promise, is in
 [`docs/OPTIMISATION.md`](OPTIMISATION.md).
+
+**The Staging optimum tab** (pick it in Analyses) puts two answers beside the vehicle as sized, each with its split and
+lift-off mass, and explains both under its chart. The **analytical optimum** is the book's closed form (Eqs. 5:30-5:33,
+pp.287-288): a Lagrange multiplier gives the stage mass ratios that reach the Δv with the least mass, for exhaust
+speeds and structural ratios held fixed. They are taken from your converged design, and that split is sized again here
+to price it. The **numerical optimum** is this tool's search (M36): every candidate split is sized in full, random
+samples first, then Nelder-Mead from the best few. The difference between the two is what the size-dependence of the
+structure is worth on your vehicle.
 
 ---
 
@@ -929,6 +936,14 @@ delta-v requirement and its margin, staging delay, propellant densities, loading
 the tank mass model, plus a configuration comparison. A case that does not converge keeps its row and its
 reason rather than disappearing, so a study never looks healthier than it was.
 
+The baseline is the vehicle on the Summary tab: the cases keep its unsaved edits and its delta-v split, including a
+split the optimiser chose, which is held fixed rather than optimised again for each case. The ranges are set about the
+design: payload and stage-1 diameter at 5, 10 and 20 % either side of the design's own value, densities at 2 and 4 % for
+the propellants this vehicle actually carries, and the margins and staging delay in steps either side of their own
+values. The tank-mass study compares the other relationships with the one the design uses, on liquid stages only, and
+the configuration comparison names the upper stage's own propellants as its baseline. The highlighted row in each study
+is the design point.
+
 It sizes the vehicle dozens of times, so it takes appreciably longer than a single run. These studies have
 always run in the CLI (on by default, `--no-sensitivity` to skip) and appeared in the Excel workbook; until
 v0.23.1 they had no way in from the browser.
@@ -1264,6 +1279,26 @@ expectation of 4–8 g and 1.5–3 g for a preliminary design.
 ignition overpressure, lift-off acoustics, buffet and pyrotechnic shock without a prediction method for any —
 of ignition overpressure it says it "is difficult to estimate"), and the frequency requirement (§11.5.3 asks for
 spacecraft modes at least twice the vehicle's, and the vehicle's are not computed here).
+
+**What the ascent does to the payload over time** (method M110). The tab and the report also show, from the flown
+ascent:
+
+* the steady axial load factor against time;
+* the free-molecular heat flux ½ρv³ the payload would feel with the fairing off, against the 1,135 W/m² a launcher
+  guide uses to decide when the fairing may come off (Arianespace, *Ariane 6 User's Manual*, Issue 2 Rev. 0, February
+  2021, sec. 3.3.3.2), with the flux at the moment this design drops its fairing and the time after which it stays
+  under the limit. If the fairing comes off too early, the tab says so: when it comes off is an input, the stage at
+  whose start it is jettisoned;
+* how fast the outside pressure falls, against the 2.5 kPa/s (4.0 kPa/s for under 5 s near transonic) the same manual
+  allows under the fairing (sec. 3.2.8.2). The pressure under the fairing lags the outside air through the vents, so
+  this is an upper bound on what the venting has to manage.
+
+The flux uses the flight's own atmosphere. The book's exponential model keeps one scale height all the way up, and the
+real atmosphere thins more slowly above about 90 km, so the time the flux falls under the limit is probably late. The
+tool's US76 model stops at 86 km, so that bias is not measured.
+
+Sine and random vibration, acoustics, shock and the radiated flux from the fairing are listed with Ariane 6's published
+figures, so you can see what a payload is designed to. Those are a reference, not results for your vehicle.
 
 ### 7.17 Trade studies and design comparison
 
@@ -1688,6 +1723,12 @@ read. Column names are matched loosely — `altitude_m`, `alt_km`, `height_ft` f
 ```bash
 python -m launch_vehicle.main run --loads --design mydesign.yaml   # uses whatever the design names
 ```
+
+**In the GUI the wind settings and the pad height are on the Loads tab**, not in the input list, because the loads are
+the only thing that reads them: the sizing and the ascent fly in still air. Changing one runs the loads, the shell sizing and the
+payload's lateral load again on the same vehicle and ascent, without sizing anything again, and Save writes them into
+the design. (The control-authority check in the Stability tab uses the book's Atlantic Missile Range envelope whatever
+profile is chosen here.)
 
 **Steady wind and gust envelope are not the same input.** This is the distinction that decides whether the
 feature helps or silently halves your design load:

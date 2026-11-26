@@ -271,7 +271,6 @@ def build_spec(design: dict, assump: dict, reg: list | None = None, name: str = 
         staging_delay_s=_need(loss, "staging_delay_s", "mission.losses"),
         ascent_time_override_s=loss.get("ascent_time_override_s"),
         design_margin_fraction=_need(loss, "design_margin_fraction", "mission.losses"),
-        report_apogee_maneuver=m.get("report_apogee_maneuver", False),
         dv_override_mps=m.get("delta_v_override_mps"),
         air_launch=m.get("air_launch"),
         # the 3-DoF ascent trajectory study reads these; all optional, all defaulted
@@ -386,6 +385,13 @@ def build_spec(design: dict, assump: dict, reg: list | None = None, name: str = 
     spec.engine_db_notes = _engine_notes
     spec.propellant_combination_notes = _combo_notes
     spec.launch_site_note = _site_note
+    # the shell check needs a material for the skirts and interstages of a vehicle with no liquid stage, whose
+    # stages carry no tank material of their own; the library's generic aluminium, as a stated assumption
+    _al = mats["Al-2219"] if "Al-2219" in mats else next(iter(mats.values()))   # a library key, not a design input
+    spec.default_structure_material = TankMaterial(
+        _al["name"], _al["rho_kg_m3"], _al["alpha_per_K"], _al["sigma_allow_Pa"], _al["joint_efficiency"],
+        _al["safety_factor"], _al["corrosion_allowance_m"], _al["t_min_m"], E_Pa=_al.get("E_Pa", 69.0e9),
+        poisson=_al.get("poisson", 0.31), t_min_structural_m=_al.get("t_min_structural_m", 0.0005))
     from .propellant_db import load as _load_combinations
     spec.propellant_combinations = _load_combinations(assump, reg)
     return spec

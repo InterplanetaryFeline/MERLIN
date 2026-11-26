@@ -121,3 +121,16 @@ def test_the_window_error_names_the_cause_it_has():
 
 def test_looking_for_webview2_never_raises():
     assert desktop.webview2_installed() in (True, False, None)
+
+
+def test_the_app_has_its_own_icon():
+    """A rocket in a wizard's hat, for an app called MERLIN, instead of Windows' default."""
+    from PIL import Image
+    static = os.path.join(ROOT, "src", "launch_vehicle", "gui_static")
+    ico = Image.open(os.path.join(static, "merlin.ico"))
+    assert {(16, 16), (32, 32), (48, 48), (256, 256)} <= set(ico.info.get("sizes", set()))
+    assert Image.open(os.path.join(static, "favicon.png")).size == (64, 64)
+    src = open(os.path.join(ROOT, "tools", "build_app.py"), encoding="utf-8").read()
+    assert '"--icon", icon' in src and "merlin.ico" in src
+    page = open(os.path.join(static, "index.html"), encoding="utf-8").read()
+    assert '<link rel="icon" type="image/png" href="/favicon.png">' in page

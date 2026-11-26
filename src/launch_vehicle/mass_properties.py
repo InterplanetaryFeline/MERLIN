@@ -308,6 +308,18 @@ def _present(item, k, phase, J, N, boost_stage=0) -> bool:
     return False
 
 
+def at_liftoff(res, item) -> bool:
+    """Is this ledger item on the vehicle at lift-off? The ledger also holds what is left at burnout - the residual
+    and margin propellant, which is part of the loaded propellant above it - so adding up every line counts that
+    twice. The Masses tab and the report did, and showed a lift-off mass the sizing never had."""
+    bst = res.boosters.attach_stage if res.boosters else 0
+    return _present(item, 1, "ignition", res.spec.fairing.jettison_stage, len(res.stages), bst)
+
+
+def liftoff_total(res) -> float:
+    return sum(i.mass_kg for i in res.ledger if at_liftoff(res, i))
+
+
 def cm_of(items) -> tuple:
     m = sum(i.mass_kg for i in items)
     return m, (sum(i.mass_kg * i.z_m for i in items) / m if m > 0 else float("nan"))

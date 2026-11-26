@@ -544,14 +544,25 @@ def draw_internal_ballistics(profiles: list, path_png=None, path_pdf=None, title
     if not live:
         return None
     fig, axes = plt.subplots(2, 1, figsize=(8.6, 6.8), sharex=False)
-    for p in live:
-        t = [pt["t_s"] for pt in p["points"]]
+    # the slivers left in the domes burn on at a pressure no real motor sustains; show the burn and the start of
+    # the tail, not a minute of near-zero thrust
+    t_end = max(1.35 * p.get("action_time_s", p["burn_time_s"]) for p in live)
+    for i, p in enumerate(live):
+        col = f"C{i}"
+        pts = [pt for pt in p["points"] if pt["t_s"] <= t_end]
+        t = [pt["t_s"] for pt in pts]
         lab = f"stage {p['stage']}" if p.get("stage") else p.get("grain", "")
-        axes[0].plot(t, [pt["thrust_N"] / 1e3 for pt in p["points"]], "-", lw=1.6, label=lab)
-        axes[0].plot([0, p["burn_time_s"]], [p["design_thrust_N"] / 1e3] * 2, "--", lw=1.1, color="#666666")
-        axes[1].plot(t, [pt["pc_Pa"] / 1e6 for pt in p["points"]], "-", lw=1.6, label=lab)
-        axes[1].plot([0, p["burn_time_s"]], [p["pc_design_Pa"] / 1e6] * 2, "--", lw=1.1, color="#666666")
+        axes[0].plot(t, [pt["thrust_N"] / 1e3 for pt in pts], "-", lw=1.6, color=col, label=lab)
+        axes[0].plot([0, p["design_burn_time_s"] if p.get("design_burn_time_s") else p["burn_time_s"]],
+                     [p["design_thrust_N"] / 1e3] * 2, "--", lw=1.1, color=col)
+        axes[1].plot(t, [pt["pc_Pa"] / 1e6 for pt in pts], "-", lw=1.6, color=col, label=lab)
+        axes[1].plot([0, p["design_burn_time_s"] if p.get("design_burn_time_s") else p["burn_time_s"]],
+                     [p["pc_design_Pa"] / 1e6] * 2, "--", lw=1.1, color=col)
+        if p.get("web_burnout_t_s"):
+            for ax in axes:
+                ax.axvline(p["web_burnout_t_s"], color=col, lw=0.8, ls=":")
     axes[0].plot([], [], "--", lw=1.1, color="#666666", label="constant value the sizing assumed")
+    axes[0].plot([], [], ":", lw=0.8, color="#666666", label="web burnout: the bore reaches the case wall")
     axes[0].set_ylabel("thrust [kN]", fontsize=9)
     axes[1].set_ylabel("chamber pressure [MPa]", fontsize=9)
     axes[1].set_xlabel("time from ignition [s]")
@@ -648,4 +659,55 @@ def draw_wind_profiles(profiles, path_png=None, path_pdf=None, title="", traj=No
     ax.legend(fontsize=8, loc="upper right")
     ax.set_title(title or "Winds aloft", fontsize=10)
     _save(fig, path_png, path_pdf)
+    return fig
+
+
+def payload_env_window(f: dict) -> float:
+    """The end of the stretch of flight worth plotting: past the fairing jettison and the point where the flux
+    stays under the limit, and not out into a long coast where nothing happens to the payload."""
+    t = f["t_s"]
+    marks = [x for x in (f.get("jettison_t_s"), f.get("fmh_ok_from_t_s"), f.get("max_dpdt_t_s")) if x]
+    end = 1.6 * max(marks) if marks else t[-1]
+    return min(t[-1], max(end, 300.0))
+
+
+def draw_payload_env(f: dict, path_png=None, path_pdf=None, title=""):
+    """What the ascent does to the payload over time: axial load factor, free-molecular heat flux and the fall
+    of outside pressure, each against the limit a launcher guide states for it."""
+    t_end = payload_env_window(f)
+    k = [i for i, x in enumerate(f["t_s"]) if x <= t_end]
+    t = [f["t_s"][i] for i in k]
+    fig, (a1, a2, a3) = plt.subplots(3, 1, figsize=(10.5, 9.0), sharex=True)
+    a1.plot(t, [f["axial_g"][i] for i in k], color=ACC, lw=1.4)
+    a1.set_ylabel("axial load factor [g]")
+    a1.set_title("Steady axial acceleration felt by the payload", fontsize=10)
+    flux = [max(f["fmh_W_m2"][i], 1e-3) for i in k]
+    a2.semilogy(t, flux, color=RED, lw=1.4, label="1/2 rho v^3 on the flown ascent")
+    a2.axhline(f["fmh_limit_W_m2"], color="0.3", ls="--", lw=1.1,
+               label=f"{f['fmh_limit_W_m2']:,.0f} W/m2, Ariane 6 User's Manual jettison criterion")
+    if f.get("fmh_ok_from_t_s"):
+        a2.axvline(f["fmh_ok_from_t_s"], color=GREEN, lw=1.2, ls=":")
+        a2.text(f["fmh_ok_from_t_s"], f["fmh_limit_W_m2"] * 30, f"  below the limit from {f['fmh_ok_from_t_s']:,.0f} s",
+                fontsize=8, color=GREEN)
+    a2.set_ylim(10.0, max(flux) * 3)
+    a2.set_ylabel("free-molecular flux [W/m2]")
+    a2.set_title("Heating the payload would feel with the fairing off", fontsize=10)
+    a2.legend(fontsize=7.5, loc="upper right")
+    a3.plot(t, [f["dpdt_kPa_s"][i] for i in k], color="#44618f", lw=1.4, label="fall of outside pressure")
+    lo, hi = f["vent_rate_kPa_s"]
+    a3.axhline(lo, color="0.3", ls="--", lw=1.1, label=f"{lo} kPa/s, Ariane 6 limit under the fairing")
+    a3.axhline(hi, color="0.5", ls=":", lw=1.1, label=f"{hi} kPa/s, its short transonic allowance")
+    a3.set_ylabel("dp/dt [kPa/s]")
+    a3.set_xlabel("time from lift-off [s]")
+    a3.set_title("How fast the vents have to let the air out", fontsize=10)
+    a3.legend(fontsize=7.5, loc="upper right")
+    for a in (a1, a2, a3):
+        a.grid(alpha=0.25)
+        if f.get("jettison_t_s") and f["jettison_t_s"] <= t_end:
+            a.axvline(f["jettison_t_s"], color="0.2", lw=1.0)
+    a1.text(f.get("jettison_t_s") or 0, a1.get_ylim()[1] * 0.92, "  fairing jettison", fontsize=8) if (
+        f.get("jettison_t_s") and f["jettison_t_s"] <= t_end) else None
+    if title:
+        fig.suptitle(title, fontsize=11)
+    _save(fig, path_png, path_pdf, rect=(0, 0, 1, 0.97) if title else None)
     return fig

@@ -148,7 +148,7 @@ def test_more_pressure_never_demands_a_thicker_wall_for_axial_strength():
 def test_hydrostatic_head_grows_with_acceleration_and_depth_and_is_zero_for_solids():
     assert st.hydrostatic_pressure_Pa(1141.0, 3.0, 8.0) == pytest.approx(1141 * st.G0 * 3 * 8, rel=1e-12)
     assert st.hydrostatic_pressure_Pa(1141.0, 0.0, 8.0) == 0.0
-    assert st.hydrostatic_pressure_Pa(0.0, 3.0, 8.0) == 0.0, "a solid grain carries no head (p.649 note)"
+    assert st.hydrostatic_pressure_Pa(0.0, 3.0, 8.0) == 0.0, "a solid grain carries no head (p.650 note)"
 
 
 # ====================================================================== the buckling solver
@@ -274,3 +274,56 @@ def test_the_analysis_runs_with_the_ground_case_alone():
     out = st.analyse(r, L.standard_cases(r, None))
     assert out["cases"] and all("Flight" not in c for c in out["cases"])
     assert all(s.t_required_m > 0 for s in out["shells"])
+
+
+# ====================================================================== found in v1.3.1, fixed after it
+def _structure_of(name):
+    from launch_vehicle.config_io import load_design
+    from launch_vehicle.convergence import size_vehicle
+    r = size_vehicle(load_design(os.path.join(ROOT, "validation", f"{name}.yaml"), ASSUMP))
+    t = tj.fly_design(r)
+    return r, st.analyse(r, L.standard_cases(r, t))
+
+
+def test_a_stage_already_dropped_is_not_loaded_by_a_later_flight_case():
+    """Falcon 9's maximum-acceleration case is at stage-2 burnout. It used to load stage 1 too, with its tanks
+    full, and sized the first-stage oxygen tank by a 1.2 MPa liquid head that never exists."""
+    r, out = _structure_of("falcon9")
+    late = [c for c in L.standard_cases(r, tj.fly_design(r)).values()
+            if hasattr(c, "stations") and (c.state.get("stage_burning") or 1) > 1]
+    for sh in out["shells"]:
+        if sh.stage == 1:
+            assert not {c.name for c in late} & {c.case for c in sh.cases}, sh.name
+
+
+def test_a_solid_first_stage_does_not_stop_the_analysis():
+    """Vega's first stage has no tanks, and reading its tank material raised: no Structure tab at all."""
+    r, out = _structure_of("vega")
+    assert out["shells"]
+    names = [s.name for s in out["shells"]]
+    assert not any("casing" in n.lower() for n in names), "a solid casing is not an aluminium monocoque shell"
+    assert any("Solid-motor casings are not analysed" in n for n in out["notes"])
+
+
+def test_a_tank_narrower_than_its_stage_carries_only_its_own_pressure():
+    r, out = _structure_of("vega")
+    inner = [s for s in out["shells"] if s.pressurised and s.R_m < 0.5 * r.spec.stages[s.stage - 1].diameter_m - 1e-3]
+    assert inner
+    for s in inner:
+        assert all(c.P_N == 0.0 and c.M_Nm == 0.0 for c in s.cases)
+
+
+def test_each_shell_is_checked_in_its_own_stage_material():
+    r, out = analysed()
+    for s in out["shells"]:
+        assert s.material.name == r.spec.stages[s.stage - 1].tank.material.name
+
+
+def test_at_the_required_buckling_thickness_the_buckling_margin_is_zero():
+    """The margin and the required thickness now use the same applied stress."""
+    sh = st.analyse_shell("x", "tank", 1, 2.0, 17.8, 2.0, 1.0, 0.005, st.Material("al", E_AL, 0.31, 2800.0, 448e6),
+                          True, [dict(case="c", P_N=3.9e6, M_Nm=3.8e6, V_N=0.0, p_Pa=300e3, p_hydro_Pa=0.0, n_x=1.0)], FS_EX)
+    t = sh.cases[0].t_buckling_m
+    sh2 = st.analyse_shell("x", "tank", 1, 2.0, 17.8, 2.0, 1.0, t, st.Material("al", E_AL, 0.31, 2800.0, 448e6),
+                           True, [dict(case="c", P_N=3.9e6, M_Nm=3.8e6, V_N=0.0, p_Pa=300e3, p_hydro_Pa=0.0, n_x=1.0)], FS_EX)
+    assert sh2.cases[0].margin_buckling == pytest.approx(0.0, abs=1e-4)

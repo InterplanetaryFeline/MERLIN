@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>MERLIN - launch vehicle sizing</title>
+<link rel="icon" type="image/png" href="/favicon.png">
 <style>
 /* One instrument: the palette and the provenance colours are the design report's, so a value looks the same
    here as it does in the document this produces. No webfonts - the GUI must work with no network at all. */
@@ -123,6 +124,8 @@ th{background:var(--accent);color:#fff;font-weight:600;font-size:11px;position:s
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 tbody tr:nth-child(even) td{background:#fafbfc}
 tr.sum td{font-weight:700;background:#eef2f7 !important}
+tr.muted td{color:var(--muted);font-style:italic}
+tr.here td{background:#eaf4ea !important;font-weight:600}
 th.sortable{cursor:pointer;user-select:none}
 th.sortable:hover{filter:brightness(1.15)}
 th .arr{opacity:.85;margin-left:3px;font-size:9px}
@@ -718,6 +721,44 @@ function gotoField(path) {
 }
 
 /* ------------------------------------------- picking a launch site carries its latitude, and the floor */
+function applyOrbitCascade(it, value) {
+  /* The orbit type decides what the altitudes have to be: a geostationary type at a 400 km apogee is not a design,
+     it is a contradiction that only surfaces when Size is pressed. So the pick sets the altitudes that follow from
+     it, says what it changed under the field, and leaves each change revertible like any other override. A
+     perigee that already suits the new type is kept. */
+  if (it.path !== "mission.orbit.type" || !value) return;
+  const O = "mission.orbit.", byPath = {};
+  for (const row of S.items) byPath[row.path] = row;
+  const changed = [];
+  const set = (leaf, v, why) => {
+    const path = O + leaf, target = byPath[path];
+    if (!target) return;
+    const before = valueOf(path);
+    if (JSON.stringify(before ?? null) === JSON.stringify(v)) return;
+    if (JSON.stringify(v) === JSON.stringify(target.value ?? null)) delete S.overrides[path]; else S.overrides[path] = v;
+    delete S.overrideSources[path];
+    const unit = target.units && target.units !== "-" ? " " + target.units : "";
+    changed.push(`${(target.label || leaf).toLowerCase()} ${v === null ? "cleared" : "set to " + fmt(v, v < 100 ? 1 : 0) + unit}${why ? " (" + why + ")" : ""}`);
+  };
+  const perigee = valueOf(O + "perigee_altitude_km");
+  const high = ["GTO", "GEO_VIA_GTO", "GEO_DIRECT"].includes(value);
+  if (value === "LEO" || value === "SSO") {
+    set("apogee_altitude_km", null, "circular at the perigee altitude");
+    set("eccentricity", null);
+    if (typeof perigee === "number" && perigee > 2000) set("perigee_altitude_km", value === "SSO" ? 600 : 400, "a typical altitude for this orbit");
+  } else if (high) {
+    set("apogee_altitude_km", 35786, "geostationary altitude");
+    set("eccentricity", null);
+    if (typeof perigee === "number" && perigee > 2000) set("perigee_altitude_km", 200, "a typical transfer-orbit perigee");
+  }
+  delete S.rowNotes[it.path];
+  const extra = value === "SSO" ? " The inclination is computed for a sun-synchronous orbit, so the inclination field is not used."
+              : value === "CUSTOM" ? " Custom keeps the altitudes as they are: give the perigee and either the apogee or the eccentricity." : "";
+  if (changed.length || extra)
+    S.rowNotes[it.path] = (changed.length ? "Changed with the orbit type: " + changed.join("; ") + "." : "") + extra;
+  renderInputs(); countOverrides();
+}
+
 function applySiteCascade(it, value) {
   /* A site is a latitude, and a latitude is a floor on inclination: sin b = cos i / cos lat has no solution
      below |lat|, so a direct ascent simply cannot reach it. The shipped default sits at 28.5 deg inclination
@@ -935,6 +976,7 @@ function control(it) {
       setOverride(it, raw === "—" ? null : parseVal(raw, it));
       if (raw !== "—") applyCascade(it, raw);
       applySiteCascade(it, raw === "—" ? null : raw);
+      applyOrbitCascade(it, raw === "—" ? null : raw);
     }});
     /* A choice field whose value may legitimately be empty (pick a real engine, name a combination) gets an
        explicit empty option - unless the list already supplies one of its own, as the launch sites do with
@@ -1087,6 +1129,7 @@ function renderInputs() {
     if (needs && needs !== drag) continue;       // an input of a drag model that is not the one selected
     if (hiddenByChoice(it)) continue;            // an input the method chosen beside it never reads
     if (it.path === "mission.cost_year" || it.path.startsWith("mission.cost.")) continue;   // on the Cost tab
+    if (it.path.startsWith("mission.wind.") || it.path === "mission.pad_height_m") continue;  // on the Loads tab
     if (HIDDEN_INPUTS.includes(it.path)) continue;
     if (!secs.has(it.section)) secs.set(it.section, new Map());
     const tops = secs.get(it.section);
@@ -1296,7 +1339,8 @@ const SUMMARY_LABELS = {
   usd_per_kg: "Cost per kg to orbit [$]", year: "Cost year",
   controllability: "Worst control authority M\u03b4/M_A", t_s: "at t [s]", trim_deg: "Trim deflection [deg]",
   p05_glom_kg: "Lift-off mass, 5th percentile [kg]", p50_glom_kg: "Lift-off mass, median [kg]",
-  p95_glom_kg: "Lift-off mass, 95th percentile [kg]", n: "Samples",
+  p95_glom_kg: "Lift-off mass, 95th percentile [kg]", n: "Samples that sized", n_failed: "Samples that did not size",
+  nominal_glom_kg: "Lift-off mass as sized [kg]",
   payload_kg: "Payload at the optimum [kg]", gain_kg: "Payload gained [kg]", binding: "Binding limit",
   attempted: "Flown", status: "Outcome", drag_loss_mps: "Drag loss to the first cutoff [m/s]",
   peak_cd: "Peak drag coefficient", drag_shape: "Shape at lift-off",
@@ -1307,7 +1351,7 @@ const STUDY_TABS = {
   loads: ["loads", "Loads", "loads_png"],
   structure: ["structure", "Structure", "structure_png"],
   stability: ["stability", "Stability", "stability_png"],
-  payload_env: ["payload_env", "Payload environment", null],
+  payload_env: ["payload_env", "Payload environment", "payload_env_png"],
   ascent_optimum: ["ascent_optimum", "Pitch programme", "ascent_opt_png"],
   ballistics: ["ballistics", "Internal ballistics", "ballistics_png"],
   performance: ["performance", "Capability", "performance_png"],
@@ -1334,6 +1378,299 @@ function TABS() {
   for (const k of (S.res ? S.res.studies || [] : [])) if (STUDY_TABS[k]) base.push([STUDY_TABS[k][0], STUDY_TABS[k][1]]);
   base.push(["report", "Report"]);
   return base;
+}
+/* ------------------------------------------------------------------ Payload environment tab
+   What a payload user's guide gives the spacecraft designer, as far as this tool can honestly produce it: the
+   design load factors by flight event, and what the flown ascent does to the payload over time - heating once the
+   fairing is off and how fast the pressure around it falls. What a real guide also specifies and this tool cannot
+   compute (vibration, acoustics, shock) is listed with Ariane 6's published figures, as a reference only. */
+function payloadEnvTab(v, ss) {
+  const f = ss.flight || {}, g = x => fmt(x, 2);
+  v.append(kpis([
+    ["Design axial load", `${fmt(ss.axial_g, 1)} g`, ss.event],
+    ["Design lateral load", `${fmt(ss.lateral_g, 1)} g`, ss.lateral_event || ""],
+    ["Max dynamic pressure", `${fmt(f.max_q_kPa, 1)} kPa`, f.max_q_t_s ? `t = ${fmt(f.max_q_t_s, 0)} s` : ""],
+    ["Fairing jettison", f.jettison_t_s ? `${fmt(f.jettison_h_m / 1e3, 0)} km` : "–", f.jettison_t_s ? `t = ${fmt(f.jettison_t_s, 0)} s` : ""],
+    ["Fastest pressure fall", `${fmt(f.max_dpdt_kPa_s, 2)} kPa/s`, f.max_dpdt_t_s ? `t = ${fmt(f.max_dpdt_t_s, 0)} s` : ""],
+  ]));
+  const typ = ss.typical || {}, wt = ss.within_typical || {};
+  v.append(el("h3", {class: "sect", text: "Quasi-static load factors by flight event"}));
+  v.append(table(["Event", "t [s]", "Axial steady [g]", "Axial dynamic [g]", "Axial total [g]",
+                  "Lateral steady [g]", "Lateral dynamic [g]", "Lateral total [g]"],
+    (ss.rows || []).map(r => [r.event, fmt(r.t_s, 0), g(r.axial_static_g), "±" + g(r.axial_dynamic_g), g(r.axial_g),
+                              g(r.lateral_static_g), "±" + g(r.lateral_dynamic_g), g(r.lateral_g)]), [1, 2, 3, 4, 5, 6, 7]));
+  v.append(el("p", {class: "small", text:
+    "The steady part is this vehicle's own: axial from the flown ascent, lateral from the Chapter 9 flight load case. "
+    + "The dynamic part is NOT computed - it needs a coupled-loads analysis with structural modes - and is filled from "
+    + "the two real guides the book prints (Ariane 5, Table 11.3; Atlas V, Table 11.4) as stand-ins. "
+    + (typ.axial ? `The book expects ${typ.axial[0]}-${typ.axial[1]} g axial and ${typ.lateral[0]}-${typ.lateral[1]} g `
+      + `lateral for a preliminary design (p.691); this vehicle is ${wt.axial ? "inside" : "OUTSIDE"} that axially and `
+      + `${wt.lateral ? "inside" : "OUTSIDE"} it laterally.` : "")}));
+  v.append(el("h3", {class: "sect", text: "Fairing jettison and heating"}));
+  const jt = [];
+  if (f.jettison_t_s !== undefined) {
+    jt.push(["Fairing jettison in this flight", `t = ${fmt(f.jettison_t_s, 0)} s, ${fmt(f.jettison_h_m / 1e3, 1)} km`]);
+    jt.push(["Free-molecular flux at jettison, ½ρv³", `${fmt(f.jettison_fmh_W_m2, 0)} W/m²`]);
+    jt.push(["Highest flux from then on", `${fmt(f.jettison_fmh_after_W_m2, 0)} W/m²`]);
+  }
+  jt.push(["Flux stays under the limit from", f.fmh_ok_from_t_s
+    ? `t = ${fmt(f.fmh_ok_from_t_s, 0)} s, ${fmt(f.fmh_ok_from_h_m / 1e3, 1)} km` : "not within the flight shown"]);
+  jt.push(["Limit used", `${fmt(f.fmh_limit_W_m2, 0)} W/m² (Ariane 6 User's Manual, sec. 3.3.3.2)`]);
+  v.append(table(["", "Value"], jt, [1]));
+  if (f.jettison_ok === false)
+    v.append(el("p", {class: "note", style: NOTE, text: "The fairing comes off before the heating has fallen to the "
+      + "limit, so a real payload would see far more than a guide allows. When it comes off is an input (the stage at "
+      + "whose start the fairing is jettisoned); a later stage, or a coast, moves it up."}));
+  v.append(el("p", {class: "small", text: "The flux is computed on the flight's own atmosphere model. The book's "
+    + "exponential model keeps one scale height all the way up, while the real atmosphere thins more slowly above about "
+    + "90 km, so the altitude where the flux falls under the limit is probably later than a real launcher's. "
+    + "The pressure fall is that of the outside air; the pressure under the fairing follows it through the vents "
+    + `with a lag, so this is an upper bound on what the venting must manage (Ariane 6: ${(f.vent_rate_kPa_s || [])[0]} kPa/s `
+    + `for most of the flight, ${(f.vent_rate_kPa_s || [])[1]} kPa/s briefly near transonic, sec. 3.2.8.2).`}));
+  v.append(el("h3", {class: "sect", text: "Not computed here: what a real guide also specifies"}));
+  v.append(el("p", {class: "small", text: "Each line is Ariane 6's published figure, so you can see what a payload is "
+    + "designed to. It is a reference, not a result for this vehicle. Source: Arianespace, Ariane 6 User's Manual, "
+    + "Issue 2 Revision 0, February 2021."}));
+  v.append(table(["Environment", "Ariane 6 figure", "Where", "Why MERLIN does not compute it"],
+    (ss.reference || []).map(r => r)));
+  const qsl = (title, rows, heads) => {
+    v.append(el("h4", {text: title}));
+    v.append(table(heads, rows.map(r => [r[0], (r[1] >= 0 ? "+" : "") + g(r[1]), "±" + g(r[2]), "±" + g(r[3])]), [1, 2, 3]));
+  };
+  const det = el("details", {class: "fold"});
+  det.append(el("summary", {text: "The two real load tables the book prints, for comparison"}));
+  v.append(det);
+  const hold = v; v = det;
+  qsl("Ariane 5 (book Table 11.3, ESA): negative is compression", ss.ariane5 || [],
+      ["Event", "Longitudinal static [g]", "Longitudinal dynamic [g]", "Lateral static + dynamic [g]"]);
+  qsl("Atlas V (book Table 11.4, ULA)", ss.atlas5 || [], ["Flight condition", "Axial [g]", "Axial dynamic [g]", "Lateral [g]"]);
+  v = hold;
+}
+/* ------------------------------------------------------------------ wind, on the Loads tab
+   The wind is read by the loads analysis and nothing else: the sizing and the ascent fly in still air. So its
+   settings sit here, and changing one runs the loads again - with the shells and the payload's lateral load, which
+   are built on them - on the same vehicle and the same ascent, without sizing anything again. They are kept as
+   overrides under mission.wind, so Save writes them into the design. */
+const WIND_KEYS = ["profile", "kind", "gust_increment_mps"];
+const windPath = k => k === "pad_height_m" ? "mission.pad_height_m" : "mission.wind." + k;
+function windValue(k) {
+  const path = windPath(k), it = S.items.find(i => i.path === path);
+  return path in S.overrides ? S.overrides[path] : it ? it.value : null;
+}
+async function windSet(k, value) {
+  const path = windPath(k), it = S.items.find(i => i.path === path);
+  const had = path in S.overrides, before = S.overrides[path];
+  if (it && JSON.stringify(value) === JSON.stringify(it.value)) delete S.overrides[path]; else S.overrides[path] = value;
+  const wind = {};
+  for (const w of WIND_KEYS) if (windValue(w) !== null && windValue(w) !== undefined) wind[w] = windValue(w);
+  busy(true, "running the loads again with this wind …");
+  try {
+    const j = await api("/api/wind", {method: "POST", headers: {"Content-Type": "application/json"},
+                                      body: JSON.stringify({token: S.res.token, wind: wind,
+                                                            pad_height_m: windValue("pad_height_m")})});
+    Object.assign(S.res.study_summary, j.study_summary);
+    S.res.figures = j.figures;
+    S.figRev = (S.figRev || 0) + 1;
+    S.windError = "";
+    S.dirty = true;
+  } catch (e) {
+    if (had) S.overrides[path] = before; else delete S.overrides[path];
+    S.windError = e.message;
+  } finally { busy(false); }
+  countOverrides();
+  render();
+}
+function windBox(v) {
+  v.append(el("h3", {class: "sect", text: "Wind and pad"}));
+  v.append(el("p", {class: "small", text: "Read by the loads analysis only: each altitude's wind becomes an angle of "
+    + "attack, atan(wind / flight speed), which gives the air loads below. Changing it runs the loads, the shell sizing "
+    + "and the payload's lateral load again on this same vehicle and ascent; nothing is sized again. Save keeps it with "
+    + "the design."}));
+  if (S.windError) v.append(el("div", {class: "msg bad", text: "Not changed: " + S.windError}));
+  const item = k => S.items.find(i => i.path === "mission.wind." + k) || {};
+  /* the shipped profiles in a list, and a box for a file of your own */
+  if (S.windProfiles === undefined) {
+    S.windProfiles = null;
+    api("/api/wind_profiles").then(j => { S.windProfiles = j.profiles; render(); }).catch(() => { S.windProfiles = []; });
+  }
+  const now = String(windValue("profile") || "book_amr_95");
+  const shipped = S.windProfiles || [{value: "book_amr_95", label: "Book: Atlantic Missile Range 95 % envelope (Fig. 9.35)"}];
+  const own = !shipped.some(o => o.value === now) || S.windOwn;
+  const pick = el("select", {style: "min-width:18rem", onchange: e => {
+    if (e.target.value === "__own__") { S.windOwn = true; render(); return; }
+    S.windOwn = false; windSet("profile", e.target.value);
+  }});
+  for (const o of shipped) pick.append(el("option", {value: o.value, text: o.label}));
+  pick.append(el("option", {value: "__own__", text: "Your own file…"}));
+  pick.value = own ? "__own__" : now;
+  const prof = el("div", {}, [pick]);
+  if (own) prof.append(el("input", {type: "text", value: shipped.some(o => o.value === now) ? "" : now,
+    style: "min-width:18rem;display:block;margin-top:4px", placeholder: "a CSV or Excel path or glob",
+    onchange: e => { const v = e.target.value.trim(); if (v) windSet("profile", v); }}));
+  const kind = el("select", {onchange: e => windSet("kind", e.target.value)});
+  for (const [val, lab] of [["gust_envelope", "Gust envelope (already contains the gust)"],
+                            ["steady", "Steady wind (needs a gust increment)"]])
+    kind.append(el("option", {value: val, text: lab}));
+  kind.value = windValue("kind") || "gust_envelope";
+  // the book's curve is an envelope whatever is picked here, so the choice only means something for your own data
+  const book = /^(book_amr_95|book|default)?$/i.test(String(windValue("profile") || "").trim());
+  if (book) { kind.value = "gust_envelope"; kind.disabled = true; kind.title = "The book's curve is already a gust envelope"; }
+  const rows = [[el("span", {text: "Winds-aloft profile"}), prof, "",
+                 "The book's Eastern Test Range 95 % envelope (Fig. 9.35), one of the shipped examples (made-up data, "
+                 + "for trying the tool out), or your own: a path, glob or several paths to CSV or Excel files with "
+                 + "altitude and speed columns, each flown as its own load case, relative to the design's folder or the "
+                 + "project folder."],
+                [el("span", {text: "What the profile is"}), kind, "", (item("kind").description || "")]];
+  if (!book && kind.value === "steady")
+    rows.push([el("span", {text: "Gust increment"}), el("input", {type: "number", step: "any", style: "width:80px",
+      value: windValue("gust_increment_mps") ?? 0, onchange: e => windSet("gust_increment_mps", Number(e.target.value))}),
+      "m/s", "Added on top of a steady profile. Required, because the book gives no increment for an arbitrary site."]);
+  rows.push([el("span", {text: "Pad height above ground"}), el("input", {type: "number", step: "any", min: 0, style: "width:80px",
+    value: windValue("pad_height_m") ?? 0, onchange: e => windSet("pad_height_m", Number(e.target.value))}), "m",
+    "Raises the vehicle into the ground-wind profile for the pad and lift-off cases, which blows harder with height. "
+    + "Read by those two cases only."]);
+  v.append(plainTable(["Setting", "Value", "", "What it does"], rows));
+}
+/* ------------------------------------------------------------------ Internal ballistics tab */
+function ballisticsTab(v, ss) {
+  const kN = x => fmt(x / 1e3, 1), MPa = x => fmt(x / 1e6, 2);
+  v.append(el("p", {class: "small", text: "Each solid stage was sized on one thrust held for its whole burn. A real grain "
+    + "cannot deliver that: the propellant burns from its exposed surface, so the mass flow follows the burning area as "
+    + "the grain regresses, and the burn rate follows the chamber pressure. This works out what the grain the sizing "
+    + "drew actually delivers - thrust and pressure through the burn - and puts it beside the constant values the "
+    + "stage was sized on."}));
+  const rows = [];
+  for (const s of ss.stages || []) {
+    rows.push([`Stage ${s.stage}`, s.propellant, kN(s.design_thrust_N), `${kN(s.thrust_initial_N)} → ${kN(s.thrust_max_N)}`,
+      kN(s.thrust_mean_action_N), MPa(s.pc_design_Pa), MPa(s.pc_max_Pa), fmt(s.design_burn_time_s, 1),
+      fmt(s.action_time_s, 1), fmt(100 * s.tail_fraction, 0) + " %", `${fmt(s.Kn_start, 0)} → ${fmt(s.Kn_max, 0)}`,
+      s.progressive ? "progressive" : "regressive"]);
+  }
+  v.append(table(["Stage", "Propellant", "Thrust sized [kN]", "Thrust, start → peak [kN]", "Mean thrust, action time [kN]",
+                  "Pc sized [MPa]", "Pc peak [MPa]", "Burn sized [s]", "Action time [s]", "Burned in the tail",
+                  "Kn = Ab/At, start → peak", "Shape"], rows, [2, 4, 5, 6, 7, 8, 9]));
+  for (const k of ss.skipped || [])
+    v.append(el("p", {class: "note", style: NOTE, text: `Stage ${k.stage} is not shown: ${k.reason}.`}));
+  const worst = (ss.stages || []).slice().sort((a, b) => b.pc_max_Pa / b.pc_design_Pa - a.pc_max_Pa / a.pc_design_Pa)[0];
+  if (worst && worst.pc_max_Pa > 1.05 * worst.pc_design_Pa)
+    v.append(el("p", {class: "note", style: NOTE, text: `Stage ${worst.stage}'s chamber pressure peaks at `
+      + `${MPa(worst.pc_max_Pa)} MPa against the ${MPa(worst.pc_design_Pa)} MPa its casing was sized for (`
+      + `${fmt(worst.pc_max_Pa / worst.pc_design_Pa, 2)} ×). The casing has to hold the peak, not the design value: `
+      + "either it is heavier than the sizing assumed, or the grain needs a shape whose burning area stays flatter."}));
+  v.append(el("h3", {class: "sect", text: "How to read it"}));
+  const items = [
+    ["The grain", "A hollow cylinder: propellant cast against the casing wall with a round bore down the middle, filling "
+      + "both domes. It burns outwards from the bore, and the bore's ends burn into the domes, so the burning surface "
+      + "grows as it goes. The book says such a grain \"will produce thrust levels that increase with time\" (p.233). "
+      + "Star, cog and finocyl grains flatten the thrust, but the book draws them without dimensions (Fig. 4.12), so "
+      + "they are not modelled."],
+    ["Kn", "The burning area over the nozzle throat area. Chamber pressure follows it: Pc = [ρ a c* Kn]^(1/(1-n)) "
+      + "(Eqs. 4:32-4:33, Table 4.4). A range of Kn is a range of pressure, which is why a growing surface means a "
+      + "rising pressure."],
+    ["n", "The burn-rate pressure exponent (b in the book), from the propellant library; the book puts it between "
+      + "0.4 and 0.7 but gives none for a named propellant. Below 1 the motor is stable: a pressure rise "
+      + "speeds the burn less than it speeds the nozzle flow, so it dies away (book p.231)."],
+    ["Calibration", "The book gives no burn-rate coefficient a for any propellant, so it is not invented: it is solved so "
+      + "that each motor reaches its design pressure at its burning area averaged over the propellant (each surface counted by what it burns). The curves are then a "
+      + "statement about the grain's shape, not about a propellant MERLIN has no measured data for."],
+    ["Web burnout", "When the bore's side reaches the casing wall (dotted line on the chart). After it only the dome "
+      + "ends are left, on a shrinking surface at a falling pressure: the tail-off."],
+    ["Action time", `Until thrust falls below ${fmt(100 * ((ss.stages || [{}])[0].action_fraction || 0.1), 0)} % of its `
+      + "peak. A common convention, ASSUMED here: the last slivers burn at a pressure no real motor sustains, so the "
+      + "whole tail is not a burn time anyone would quote. \"Burned in the tail\" is the share of the propellant "
+      + "burned after web burnout."],
+    ["Against the sizing", "The total impulse is the sized one, because the whole grain burns. What differs is how it is "
+      + "spread: low thrust at ignition, a peak near the end, and a peak pressure above the design value."],
+  ];
+  v.append(plainTable(["", "What it means"], items.map(([a, b]) => [el("b", {text: a}), b])));
+}
+/* ------------------------------------------------------------------ Structure tab */
+function structureTab(v, ss) {
+  const mm = x => fmt(x, 2);
+  v.append(kpis([
+    ["Thickest wall required", `${mm(ss.thickest_mm)} mm`, `${ss.shell}, ${ss.driver}`],
+    ["Sized monocoque mass", `${fmt(ss.mass_sized_kg, 0)} kg`, "the shells the mass model also carries"],
+    ["Mass relationships", `${fmt(ss.mass_model_kg, 0)} kg`, "the same shells, Chapter 8"],
+    ["Ratio", ss.mass_ratio ? `${fmt(ss.mass_ratio, 2)} ×` : "–", "monocoque over relationship"],
+  ]));
+  v.append(el("h3", {class: "sect", text: "Required thickness, shell by shell"}));
+  v.append(table(["Shell", "Material", "R [m]", "L [m]", "t assumed [mm]", "t axial [mm]", "t hoop [mm]",
+                  "t buckling [mm]", "t required [mm]", "Driven by", "Governing case", "Margin at t assumed",
+                  "Sized mass [kg]", "Relationship mass [kg]"],
+    (ss.shells || []).map(x => ({cls: x.margin < 0 ? "warn" : "", cells: [x.name, x.material, fmt(x.R_m, 2), fmt(x.L_m, 2),
+      mm(x.t_installed_mm), mm(x.t_axial_mm), mm(x.t_hoop_mm), mm(x.t_buckling_mm), mm(x.t_required_mm), x.driver,
+      x.case, x.margin === null || !isFinite(x.margin) ? "–" : (x.margin >= 0 ? "+" : "") + fmt(100 * x.margin, 0) + " %",
+      fmt(x.mass_sized_kg, 0), x.mass_model_kg ? fmt(x.mass_model_kg, 0) : "–"]})),
+    [2, 3, 4, 5, 6, 7, 8, 11, 12, 13]));
+  v.append(el("p", {class: "small", text: (ss.materials || []).map(m => `${m.name}: E ${fmt(m.E_GPa, 0)} GPa, allowable `
+    + `${fmt(m.allow_MPa, 0)} MPa, ${fmt(m.rho, 0)} kg/m³, minimum gauge ${mm(m.t_min_mm)} mm.`).join(" ")
+    + ` Factor of safety ${fmt(ss.factor_of_safety, 2)}. A negative margin means the thickness the design assumed is too thin for that `
+    + "shell; the required thickness is the output worth reading."}));
+  v.append(el("h3", {class: "sect", text: "What \"sized monocoque\" means"}));
+  v.append(el("p", {class: "small", html:
+    "A <b>monocoque</b> shell is a plain wall that carries every load in its skin alone, with no rings, stringers, "
+    + "sandwich core or machined grid to stiffen it. <b>Sized</b> means its thickness is the smallest that survives every "
+    + "load case: the largest of what axial strength, hoop strength from pressure and liquid head, buckling and the "
+    + "minimum gauge each demand (book Chapter 10, Eqs. 10.43-10.46 and Table 10.2). The sized monocoque mass is that "
+    + "thickness × the shell's area × the material's density."}));
+  v.append(el("p", {class: "small", text:
+    "The relationship mass beside it is what the sizing loop actually puts in the vehicle for the same pieces: the "
+    + "Chapter 8 mass-estimating relationships, fitted to real launchers. Real launchers are not monocoque - their "
+    + "walls are stiffened against buckling, which is what usually sizes a monocoque wall - so the monocoque answer comes "
+    + "out heavier, and the ratio is roughly what that stiffening buys back. Neither number is fed back into the vehicle: "
+    + "the masses on every other tab are the relationship's."}));
+  if ((ss.notes || []).length) {
+    const det = el("details", {class: "fold", open: true});
+    det.append(el("summary", {text: "What this analysis assumes and leaves out"}));
+    for (const n of ss.notes) det.append(el("p", {class: "small", text: n}));
+    v.append(det);
+  }
+}
+/* ------------------------------------------------------------------ Staging optimum tab */
+function stagingTab(v, ss, r) {
+  const pct = fr => (fr || []).map(x => (100 * x).toFixed(1) + " %").join(" / ");
+  const own = r.stages.map(s => s.dv_mps), tot = own.reduce((a, b) => a + b, 0) || 1;
+  const opt = r.optimised || null;
+  const rows = [
+    [opt && opt.applied ? "This design, as sized (the split was optimised before sizing)" : "This design, as sized",
+     pct(own.map(x => x / tot)), fmt(r.glom_kg, 0)],
+    ["Analytical optimum (book Eqs. 5:30-5:33), re-sized in this tool", pct(ss.analytical_fractions),
+     ss.analytical_glom_kg === null || ss.analytical_glom_kg === undefined ? "infeasible here" : fmt(ss.analytical_glom_kg, 0)],
+    [`Numerical optimum (this tool's search, objective: ${ss.objective || "glom"})`, pct(ss.numerical_fractions),
+     fmt(ss.numerical_glom_kg, 0)],
+  ];
+  if (opt && opt.applied && opt.was) rows.push(["The design file's own split, before the optimiser replaced it", pct(opt.was),
+    fmt(ss.baseline_glom_kg, 0)]);
+  v.append(table(["Δv split", "Stage shares of Δv", "Lift-off mass [kg]"], rows, [2]));
+  if ((ss.active_constraints || []).length)
+    v.append(el("p", {class: "small", text: "Pressed against at the numerical optimum: " + ss.active_constraints.join("; ")}));
+}
+function stagingNotes(v, ss) {
+  v.append(el("h3", {class: "sect", text: "What the two optima are"}));
+  const n = ss || {};
+  v.append(el("p", {class: "small", html:
+    "<b>Analytical optimum.</b> The book's closed-form answer to optimum staging (Chapter 5, Eqs. 5:30-5:33, pp.287-288): "
+    + "for given exhaust speeds c<sub>i</sub> and structural ratios σ<sub>i</sub>, a Lagrange multiplier gives the stage "
+    + "mass ratios that reach the required Δv with the least lift-off mass, μ<sub>i</sub> = (λc<sub>i</sub> − 1)/(λc<sub>i</sub>σ<sub>i</sub>), "
+    + "with λ found so that Σ c<sub>i</sub> ln μ<sub>i</sub> equals the requirement. Here c<sub>i</sub> and σ<sub>i</sub> are "
+    + "taken from this converged design"
+    + (n.sigma ? ` (σ = ${n.sigma.map(x => x.toFixed(3)).join(", ")}; c = ${(n.c_eff_mps || []).map(x => fmt(x, 0)).join(", ")} m/s)` : "")
+    + ". It assumes they stay fixed whatever size each stage becomes, which is not true here: a stage's structural ratio "
+    + "comes out of a mass build-up that depends on its own size. So its split is sized again in this tool to give "
+    + "the mass shown, and it is a cross-check and a first guess rather than the answer."}));
+  v.append(el("p", {class: "small", html:
+    "<b>Numerical optimum.</b> This tool's own search (method M36, SUPPLEMENTARY): every candidate split is sized in "
+    + "full - mass build-up, geometry, constraints - and the one with the least lift-off mass (or the objective chosen) "
+    + "is kept. It first samples splits at random over the allowed range and keeps the feasible ones, then runs a "
+    + "Nelder-Mead search from the best few; a split that breaks a limit is penalised rather than accepted."
+    + (n.evaluations ? ` This run sized ${fmt(n.evaluations, 0)} candidates from ${fmt(n.samples, 0)} samples and ${n.starts} start(s)`
+       + (n.spread_rel !== null && n.spread_rel !== undefined && n.starts > 1 ? `, which agreed to within ${(100 * n.spread_rel).toFixed(2)} %.` : ".") : "")
+    + " Stage count, propellants, diameters and the structural model stay fixed, and it is a local optimum, not a "
+    + "proven global one. When the design asks for it (Optimise Δv split), this split is the one the vehicle is sized "
+    + "from, so every tab describes it."}));
+  v.append(el("p", {class: "small", text: "The two usually differ because of the fixed-σ assumption: where the numerical "
+    + "optimum is the lighter, the gap is what the size-dependence of the structure is worth on this vehicle. The chart "
+    + "sweeps stage 1's share of the Δv on a two-stage vehicle and sizes each point, to show how flat the optimum is."}));
 }
 /* ------------------------------------------------------------------ Cost tab */
 /* Offered only when Cost is picked in Analyses, like every analysis tab. Its settings change the estimate and not
@@ -1613,7 +1950,8 @@ function table(headers, rows, numeric) {
   }
   t.append(b); return t;
 }
-const fig = key => el("img", {class: "fig", src: `/api/figure?token=${S.res.token}&key=${key}`, alt: key, loading: "lazy"});
+// `figRev` changes when a tab redraws a chart in place (the wind settings), so the browser does not show the old one
+const fig = key => el("img", {class: "fig", src: `/api/figure?token=${S.res.token}&key=${key}&r=${S.figRev || 0}`, alt: key, loading: "lazy"});
 
 function kpis(list) {
   const d = el("div", {class: "kpi"});
@@ -1633,7 +1971,7 @@ function kpis(list) {
    question is answered by the KML export, which opens over imagery in Google Earth. */
 
 async function fetchHazard() {
-  const body = {path: S.path, overrides: S.overrides};
+  const body = {path: S.path, overrides: S.overrides, token: S.res ? S.res.token : null};
   if (S.hzAz !== null && S.hzAz !== undefined) body.azimuth_deg = S.hzAz;
   if (S.hzSpeed !== null) body.sep_speed_frac = S.hzSpeed;
   if (S.hzGamma !== null) body.sep_gamma_deg = S.hzGamma;
@@ -1707,7 +2045,7 @@ function hzDraw(host, hz) {
 }
 
 async function hzExport(fmt) {
-  const body = {path: S.path, overrides: S.overrides, format: fmt};
+  const body = {path: S.path, overrides: S.overrides, token: S.res ? S.res.token : null, format: fmt};
   if (S.hzAz !== null && S.hzAz !== undefined) body.azimuth_deg = S.hzAz;
   if (S.hzSpeed !== null) body.sep_speed_frac = S.hzSpeed;
   if (S.hzGamma !== null) body.sep_gamma_deg = S.hzGamma;
@@ -1886,7 +2224,8 @@ async function fetchSensitivity() {
   busy(true, "sizing the design once per case …");
   try {
     S.sens = await api("/api/sensitivity", {method: "POST", headers: {"Content-Type": "application/json"},
-                                            body: JSON.stringify({path: S.path, overrides: S.overrides})});
+                                            body: JSON.stringify({path: S.path, overrides: S.overrides,
+                                                                  token: S.res ? S.res.token : null})});
   } catch (e) { S.sens = {error: String(e.message || e)}; }
   finally { busy(false); }
   render();
@@ -1922,18 +2261,24 @@ function renderSensitivity(v) {
     if (!byStudy.has(r.study)) byStudy.set(r.study, []);
     byStudy.get(r.study).push(r);
   }
+  if (S.res && s.token && s.token !== S.res.token)
+    v.append(el("p", {class: "note", style: NOTE, text: "The vehicle has been sized again since these were run, so "
+      + "they describe the earlier one. Run them again to bring them up to date."}));
   v.append(el("p", {class: "small", text:
-    `Baseline lift-off mass ${fmt(s.baseline_glom_kg, 0)} kg. Every Δ below is against that.`}));
+    `Baseline lift-off mass ${fmt(s.baseline_glom_kg, 0)} kg, the vehicle on the Summary tab, with the same Δv split. `
+    + "Each study steps one input either side of this design's own value; the highlighted row is the design point. "
+    + "For how far the model's own mass relationships could be wrong, see the Uncertainty analysis instead. "
+    + "Every Δ below is against the baseline."}));
   for (const [study, rows] of byStudy) {
     v.append(el("h3", {class: "sect", text: study}));
     v.append(table(["Case", "Lift-off mass [kg]", "Δ vs baseline", "Length [m]", "Payload fraction", "Status"],
-      rows.map(r => ({cls: r.feasible ? "" : "warn", cells: cell(r)})), [1, 2, 3, 4]));
+      rows.map(r => ({cls: r.feasible ? (r.design_point ? "here" : "") : "warn", cells: cell(r)})), [1, 2, 3, 4]));
   }
   if ((s.configurations || []).length) {
     v.append(el("h3", {class: "sect", text: "Configuration comparison"}));
     v.append(table(["Configuration", "Lift-off mass [kg]", "Δ vs baseline", "Length [m]", "Payload fraction",
                     "Status"],
-      s.configurations.map(r => ({cls: r.feasible ? "" : "warn", cells: cell(r)})), [1, 2, 3, 4]));
+      s.configurations.map(r => ({cls: r.feasible ? (r.design_point ? "here" : "") : "warn", cells: cell(r)})), [1, 2, 3, 4]));
   }
 }
 
@@ -1950,7 +2295,8 @@ async function fetchArchitecture(counts, sizeCore) {
   busy(true, sizeCore ? "re-sizing a core for each booster count …" : "solving the payload for each count …");
   try {
     S.arch = await api("/api/architecture", {method: "POST", headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({path: S.path, overrides: S.overrides, counts: counts, size_core: !!sizeCore})});
+      body: JSON.stringify({path: S.path, overrides: S.overrides, token: S.res ? S.res.token : null,
+                           counts: counts, size_core: !!sizeCore})});
   } catch (e) { S.arch = {error: String(e.message || e)}; }
   finally { busy(false); }
   render();
@@ -2226,15 +2572,25 @@ function render() {
     v.append(el("div", {class: "tblbar"}, [pick("Stage", stages, "stage"), pick("Group", groups, "group"),
       el("label", {}, [np, document.createTextNode(" leave out propellant")]),
       el("span", {class: "small", text: "Click a column heading to sort."})]));
-    const total = r.ledger.reduce((a, i) => a + i.mass_kg, 0) || 1;
+    /* The ledger also lists what is left in the tanks at burnout. That residual and reserve propellant is part of
+       the loaded propellant above it, so it is shown, greyed, and never added: adding it made the total heavier
+       than the lift-off mass on the Summary, by 2 % on a medium launcher. */
+    const on = i => i.liftoff !== false;
+    const total = r.ledger.filter(on).reduce((a, i) => a + i.mass_kg, 0) || 1;
     const shown = r.ledger.filter(i => (!lf.stage || stageName(i.stage) === lf.stage) && (!lf.group || i.group === lf.group)
                                        && !(lf.noProp && /propellant/i.test(i.group)));
-    const sub = shown.reduce((a, i) => a + i.mass_kg, 0) || 1;
-    const lrows = shown.map(i => [stageName(i.stage), i.group, i.name, fmt(i.mass_kg, 1), (100 * i.mass_kg / sub).toFixed(1),
-                                  (100 * i.mass_kg / total).toFixed(2), i.z_m.toFixed(2), i.source]);
-    lrows.push({cls: "sum", cells: [`${shown.length} of ${r.ledger.length} items`, "", "Total shown", fmt(sub, 1), "100.0",
+    const sub = shown.filter(on).reduce((a, i) => a + i.mass_kg, 0) || 1;
+    const lrows = shown.map(i => on(i)
+      ? [stageName(i.stage), i.group, i.name, fmt(i.mass_kg, 1), (100 * i.mass_kg / sub).toFixed(1),
+         (100 * i.mass_kg / total).toFixed(2), i.z_m.toFixed(2), i.source]
+      : {cls: "muted", cells: [stageName(i.stage), i.group, i.name + " — at burnout, inside the loaded propellant above, not added",
+                               `(${fmt(i.mass_kg, 1)})`, "–", "–", i.z_m.toFixed(2), i.source]});
+    lrows.push({cls: "sum", cells: [`${shown.length} of ${r.ledger.length} items`, "", "Total shown at lift-off", fmt(sub, 1), "100.0",
                                     (100 * sub / total).toFixed(2), "", ""]});
     v.append(table(["Stage", "Group", "Item", "kg", "% shown", "% lift-off", "z [m]", "Source"], lrows, [3, 4, 5, 6]));
+    if (Math.abs(total - r.glom_kg) > 0.5)
+      v.append(el("p", {class: "note", style: NOTE, text: `The ledger adds up to ${fmt(total, 0)} kg at lift-off and the `
+        + `sizing to ${fmt(r.glom_kg, 0)} kg. They should agree; this is a fault worth reporting.`}));
     if (r.events.length) {
       v.append(el("h3", {class: "sect", text: "Mass properties at flight events"}));
       v.append(table(["Event", "Mass [kg]", "CM z [m]", "CM/L", "Roll inertia", "Pitch inertia"],
@@ -2411,12 +2767,17 @@ function render() {
         v.append(box);
       }
       if (S.tab === "trajectory" && ss && ss.orbit) v.append(orbitCheck(ss.orbit));
+      if (S.tab === "loads") windBox(v);
       if (S.tab === "cost" && ss) costTab(v, ss);
+      else if (S.tab === "payload_env" && ss) payloadEnvTab(v, ss);
+      else if (S.tab === "staging" && ss) stagingTab(v, ss, r);
+      else if (S.tab === "structure" && ss) structureTab(v, ss);
+      else if (S.tab === "ballistics" && ss) ballisticsTab(v, ss);
       else if (ss) {
         const rows = Object.entries(ss).filter(([, x]) => x !== null && x !== undefined && typeof x !== "object")
           .map(([k, x]) => [(SUMMARY_LABELS[k] || k.replace(/_/g, " "))
                               .replace("the first cutoff", ss.converged === false ? "the end of the flight shown" : "the first cutoff"),
-                            typeof x === "number" ? fmt(x, Math.abs(x) < 100 ? 2 : 0)
+                            typeof x === "number" ? fmt(x, Number.isInteger(x) || Math.abs(x) >= 100 ? 0 : 2)
                               : typeof x === "boolean" ? (x ? "yes" : "no") : String(x)]);
         if (rows.length) v.append(table(["Quantity", "Value"], rows, [1]));
         if (S.tab === "trajectory" && ss.notes && ss.notes.length)
@@ -2428,6 +2789,13 @@ function render() {
       if (S.tab === "loads" && (r.figures || []).includes("wind_png")) v.append(fig("wind_png"));
       if (S.tab === "trajectory" && ss && ss.timeline && ss.timeline.length) v.append(timelineTable(ss.timeline));
       if (S.tab === "trajectory" && ss && ss.drag_rows && ss.drag_rows.length) v.append(dragTable(ss));
+      if (S.tab === "staging") stagingNotes(v, ss);
+      if (S.tab === "uncertainty")
+        v.append(el("p", {class: "small", text: "This is not the Sensitivity tab. Sensitivity changes the inputs you choose "
+          + "- payload, Isp, margins - one at a time and shows what each costs. This leaves your inputs alone and varies "
+          + "the model's own mass-estimating relationships, all at once, by how far real hardware scatters around them "
+          + "(mer_scatter in the assumptions file; two measured, the rest assumed). The answer is a range for the lift-off "
+          + "mass: how wrong this method could be for this vehicle, not a choice you can make."}));
       v.append(el("p", {class: "small", text: "The Report tab carries this analysis in full, with its assumptions and limitations."}));
     }
   }

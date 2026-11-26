@@ -202,7 +202,7 @@ def test_the_brief_does_not_blank_a_user_tagged_default_that_means_something():
     plan = gui_meta.new_design_plan(_items())
     blanked = {d["path"] for d in plan["blank"]}
     for keep in ("stages[0].engine.throttle_min_fraction", "stages[1].engine.throttle_min_fraction",
-                 "mission.launch_site.altitude_m", "mission.report_apogee_maneuver"):
+                 "mission.launch_site.altitude_m"):
         assert keep not in blanked, (
             f"{keep} is a user-tagged default that means something; a new design must not clear it")
 

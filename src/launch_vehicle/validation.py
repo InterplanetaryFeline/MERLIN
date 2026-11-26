@@ -222,7 +222,7 @@ def validate_spec(spec) -> list:
     def W(c, m, field=None, options=None): warns.append(Issue("WARNING", c, m, field or infer_field(c, m), options))
     N = len(spec.stages)
     if N < 1:
-        E("NSTAGE", "at least one stage is required")
+        E("NSTAGE", "at least one stage is required", field="stage_count")
     if spec.payload_mass_kg <= 0:
         E("PAYLOAD", "payload mass must be positive", field="mission.payload_mass_kg")
     if spec.mission["orbit_type"] not in ("LEO", "SSO", "GTO", "GEO_VIA_GTO", "GEO_DIRECT", "CUSTOM"):
@@ -251,7 +251,8 @@ def validate_spec(spec) -> list:
                             "changes its tanks, so expect the mass to move"}])
     if N and f.diameter_m > spec.stages[-1].diameter_m + 1e-9:
         W("FAIRDIA", f"fairing diameter {f.diameter_m:.2f} m exceeds the upper stage ({spec.stages[-1].diameter_m:.2f} m): "
-                     f"a conical forward adapter is added to the upper stage (book Fig. 8.15, p.490)")
+                     f"a conical forward adapter is added to the upper stage (book Fig. 8.15, p.490)",
+          field="fairing.diameter_m")
     if f.envelope_diameter_m + 2 * f.radial_clearance_m > f.diameter_m:
         need = f.envelope_diameter_m + 2 * f.radial_clearance_m
         fits = f.diameter_m - 2 * f.radial_clearance_m
@@ -294,6 +295,7 @@ def validate_spec(spec) -> list:
                        "and flight-path-angle benefits must be reflected in the user loss estimates")
     for st in spec.stages:
         p = f"stage {st.index}"
+        fp = f"stages[{st.index - 1}]"              # the page's path to this stage's inputs
         if st.stage_type not in ("liquid", "solid"):
             E("STAGETYPE", f"{p}: stage_type must be 'liquid' or 'solid'")
         if st.diameter_m <= 0: E("DIAM", f"{p}: diameter must be positive")
@@ -350,7 +352,7 @@ def validate_spec(spec) -> list:
         if e.isp_mode not in ("vacuum", "weighted", "user"): E("ISP", f"{p}: unknown isp_effective_mode")
         if e.isp_mode == "vacuum" and st.index == 1 and e.isp_sl_s is not None:
             W("ISPVAC", f"{p}: vacuum Isp is used for the whole burn of a stage that lifts off in the atmosphere - optimistic")
-        if e.n_engines < 1: E("NENG", f"{p}: n_engines must be >= 1")
+        if e.n_engines < 1: E("NENG", f"{p}: n_engines must be >= 1", field=f"{fp}.engine.n_engines")
         if e.mass_method == "user" and e.mass_user_kg is None: E("ENGMASS", f"{p}: user engine mass missing")
         if e.mass_method not in ENGINE_MASS_METHODS:
             E("ENGMASS", f"{p}: unknown engine mass_method '{e.mass_method}'; expected one of "
@@ -376,16 +378,20 @@ def validate_spec(spec) -> list:
         if st.structure_mode not in ("bottom_up", "aggregate_s"): E("STRUCT", f"{p}: unknown structure_mode")
         if st.structure_mode == "aggregate_s" and not (st.structural_factor_s and 0 < st.structural_factor_s < 1):
             E("STRUCT", f"{p}: aggregate_s mode needs 0 < structural_factor_s < 1")
-        if st.tank.arrangement not in ("separate", "common_bulkhead"): E("TANKARR", f"{p}: unknown tank arrangement")
+        if st.tank.arrangement not in ("separate", "common_bulkhead"): E("TANKARR", f"{p}: unknown tank arrangement", field=f"{fp}.tank.arrangement")
 
         if st.tank.dome_AR < 1: E("DOME", f"{p}: dome aspect ratio must be >= 1")
         for role in ("fuel", "oxidizer"):
             m = st.tank.mass_method[role]
-            if m not in TANK_METHODS: E("TANKM", f"{p}: unknown tank mass method {m}")
-            if m == "pressure_vessel" and st.tank.pressure_Pa[role] <= 0: E("TANKP", f"{p}: pressure_vessel needs tank pressure for {role}")
-            if m == "mass_fraction" and st.tank.mass_fraction[role] <= 0: E("TANKF", f"{p}: mass_fraction method needs a fraction")
-        if e.exit_diameter_m <= 0 or e.length_m <= 0: E("ENGDIM", f"{p}: engine length/exit diameter must be positive")
-        if not (0 <= e.embed_fraction <= 1): E("EMBED", f"{p}: embed fraction must be in [0,1]")
+            if m not in TANK_METHODS: E("TANKM", f"{p}: unknown tank mass method {m}", field=f"{fp}.tank.mass_method_{role}")
+            if m == "pressure_vessel" and st.tank.pressure_Pa[role] <= 0:
+                E("TANKP", f"{p}: pressure_vessel needs tank pressure for {role}", field=f"{fp}.tank.pressure_{role}_Pa")
+            if m == "mass_fraction" and st.tank.mass_fraction[role] <= 0:
+                E("TANKF", f"{p}: mass_fraction method needs a fraction", field=f"{fp}.tank.mass_fraction_{role}")
+        if e.exit_diameter_m <= 0 or e.length_m <= 0:
+            E("ENGDIM", f"{p}: engine length/exit diameter must be positive",
+              field=f"{fp}.engine.{'length_m' if e.length_m <= 0 else 'exit_diameter_m'}")
+        if not (0 <= e.embed_fraction <= 1): E("EMBED", f"{p}: embed fraction must be in [0,1]", field=f"{fp}.engine.embed_fraction")
         if st.structure_mode == "aggregate_s":
             W("AGG", f"{p}: aggregate_s mode: component masses are NOT computed; inert mass is smeared in the mass properties")
     if spec.dv_mode == "fractions" and (not spec.dv_fractions or len(spec.dv_fractions) != N):
@@ -455,15 +461,17 @@ def validate_spec(spec) -> list:
 def _check_solid_stage(st, spec, E, W) -> list:
     """Input checks specific to a serial solid stage (book Sec. 8.5)."""
     p = f"stage {st.index} (solid)"
+    fp = f"stages[{st.index - 1}]"
     out = []
     mo = st.motor
     if mo is None:
-        E("MOTOR", f"{p}: a solid stage needs a 'motor' block")
+        E("MOTOR", f"{p}: a solid stage needs a 'motor' block", field=f"{fp}.stage_type")
         return out
     if st.propellant not in spec.solid_propellants:
         E("SOLIDPROP", f"{p}: solid propellant '{st.propellant}' is not in the solid-propellant library")
     if mo.n_motors != 1:
-        E("NMOTOR", f"{p}: a serial solid stage must have exactly one casing (use strap-on boosters for clusters)")
+        E("NMOTOR", f"{p}: a serial solid stage must have exactly one casing (use strap-on boosters for clusters)",
+          field=f"{fp}.motor.n_motors")
     if mo.thrust_mode not in ("tw_ignition", "fixed_thrust", "burn_time"):
         E("SOLIDTHRUST", f"{p}: thrust_mode must be tw_ignition, fixed_thrust or burn_time")
     given = {"tw_ignition": mo.tw_ignition, "fixed_thrust": mo.thrust_vac_total_N, "burn_time": mo.burn_time_s}
@@ -564,7 +572,8 @@ def _check_boosters(spec, E, W) -> None:
     if b.diameter_m <= 0:
         E("BOOSTDIA", "booster diameter must be positive")
     if spec.stages[0].is_solid and spec.stages[0].motor.thrust_mode == "burn_time":
-        W("BOOSTCORE", "core stage uses a fixed burn time: check that it still outlasts the strap-ons")
+        W("BOOSTCORE", "core stage uses a fixed burn time: check that it still outlasts the strap-ons",
+          field="stages[0].motor.burn_time_s")
 
 
 def check_result(res) -> list:
@@ -681,7 +690,43 @@ def check_result(res) -> list:
                      "re-sized around a better ascent, and no casing is re-sized for the chamber pressure its "
                      "grain would reach. Without a trajectory, the achievability of the orbit is NOT "
                      "demonstrated; with one, it is demonstrated for the profile flown and no other."))
+    for i in iss:
+        if i.level != "INFO" and not i.field:
+            i.field = _result_field(i, spec)
     return iss
+
+
+#: post-sizing checks that are about no input a user could change: the sizing's own bookkeeping. If one of these
+#: fires it is a fault in the tool, and pointing at a field would send the user to fix something that is not wrong.
+NO_FIELD = {"MASSCLOSE": "the mass accounting is the tool's own arithmetic",
+            "DVSUM": "the stage delta-v sum is the tool's own arithmetic"}
+
+
+def _thrust_field(st) -> str:
+    """The input that sets a stage's thrust, as the design spells it."""
+    if st.is_solid:
+        return f"stages[{st.index - 1}].motor.thrust_mode"
+    return (f"stages[{st.index - 1}].engine.thrust_to_weight_ignition" if st.engine.tw_ignition is not None
+            else f"stages[{st.index - 1}].engine.thrust_vac_per_engine_N")
+
+
+def _result_field(issue, spec):
+    """The input to change for a post-sizing check: the one that moves the number the check is about."""
+    if issue.code in NO_FIELD:
+        return None
+    m = _STAGE_ONE_BASED.search(issue.message)
+    st = spec.stages[min(int(m.group(1)), len(spec.stages)) - 1] if m else spec.stages[0]
+    fp = f"stages[{st.index - 1}]"
+    by_code = {
+        "TWLIFT": _thrust_field(spec.stages[0]), "TWUP": _thrust_field(st), "BURN": _thrust_field(st),
+        "BOOSTBURN": _thrust_field(spec.stages[0]),
+        "ENGFIT": f"{fp}.diameter_m", "STAGELEN": f"{fp}.diameter_m", "TANKVOL": f"{fp}.diameter_m",
+        "SFACT": f"{fp}.structure_mode", "BURNRATE": f"{fp}.motor.thrust_mode", "GRAINBORE": f"{fp}.motor.thrust_mode",
+        "VEHLEN": "stages[0].diameter_m", "SLENDER": "stages[0].diameter_m",
+        "PAYFRAC": "mission.payload_mass_kg", "PAFSMALL": "vehicle.payload_adapter_method",
+        "CONV": "vehicle.dv_fractions",
+    }
+    return by_code.get(issue.code) or infer_field(issue.code, issue.message) or (f"{fp}.name" if m else None)
 
 
 # --------------------------------------------------------------------------- which input a message is about

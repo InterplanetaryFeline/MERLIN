@@ -3,6 +3,81 @@
 Newest first. Entries are kept as written at each release, so what they say about the tool's limits and numbers
 was true of that version. [`ACCURACY.md`](ACCURACY.md) has the current measurements.
 
+**What changed in v1.4.0 - one vehicle on every tab, and the analysis tabs checked against the book**
+
+Every tab now describes the vehicle on the Summary: the mass ledger, the sensitivity and uncertainty studies and the
+hidden tabs all disagreed with it before. The Structure and Internal ballistics analyses were checked against the
+book's PDF and corrected, the Payload environment, Structure, Staging and Uncertainty tabs show the numbers they compute
+and explain them, every error points at the input to change, and the app has its own icon.
+
+*The Masses tab added up to more than the lift-off mass*: 406,194 kg against 397,246 kg on the Summary, for one design.
+The ledger lists the residual and reserve propellant left at burnout, which is already inside the loaded propellant, and
+the tab and the report added it a second time (14 t on Falcon 9, 363 kg on Electron). It is now shown greyed and not
+added, and the total is the lift-off mass. The workbook already counted it correctly.
+
+*The Sensitivity tab measured its cases against a different vehicle.* Each case re-read the design file, losing the
+optimised Δv split and any unsaved edits, so the 0 % case was not the Summary's vehicle. Every case is now the sized
+vehicle with one input changed, keeping its split. The ranges are set about the design: Electron's payload study ran
+from 5 to 15 t and now runs from 240 to 360 kg. Densities are offered only for the propellants the vehicle carries, the
+tank-mass study compares against the method the design uses, and the configuration comparison names the upper stage's
+own propellants. The hidden Architecture and Drop-zone tabs had the same fault and now work from the stored result too.
+
+*The Payload environment tab* shows the load table by flight event (only the report had it), the free-molecular heating
+at fairing jettison against the 1,135 W/m² criterion and the fall of outside pressure against 2.5 kPa/s, both from the
+Ariane 6 User's Manual (new method M110), with a chart. Vibration, acoustics and shock, which this tool cannot compute,
+are listed with Ariane 6's published figures as a reference.
+
+*The wind settings and the pad height moved to the Loads tab*, the only analysis that reads them, and changing one
+re-runs the loads without sizing again. *The Staging optimum tab* now shows both optima and the design's own split with
+their masses, and explains how each optimum is found.
+
+*Changing the orbit type sets the altitudes that follow from it*: a transfer or geostationary type puts the apogee at
+35,786 km, LEO and SSO make the orbit circular, and the note under the field says what changed. A geostationary type at
+a 400 km apogee used to fail only when sized, with a message that named no field.
+
+*Every error and warning names the input that fixes it.* Twelve input checks, the post-sizing checks (lift-off
+thrust-to-weight, stage and vehicle length, structural factor and others), the orbit errors and the loss-model errors
+used to give a sentence and nothing to click. Orbit errors also offer the fix as a button: set the apogee to 35,786 km,
+make the orbit circular, raise the inclination to the site's latitude. Two internal accounting checks stay without a
+field, because nothing a user changes would fix them; a test fails if any other check forgets its field.
+
+*The Structure tab was checked against the book (Chapter 10) and corrected.* A flight case loaded stages already
+dropped: Falcon 9's maximum-acceleration case is at stage-2 burnout, and it filled stage 1's empty oxygen tank with 4.5
+g of liquid head, asking for 13.9 mm walls (10.7 mm now, set by buckling on the pad). A vehicle with a solid first stage
+stopped the analysis outright, so Vega had no Structure tab. Each shell is now checked in its own stage's material;
+solid-motor casings are left out with a note, because the design carries no allowables for a steel or composite pressure
+vessel; a tank narrower than its stage carries only its own pressure, because the stage's outer structure carries the
+vehicle loads past it. The buckling margin is now taken against the whole compression, as Eq. 10.46 (p.653) does, so a
+wall at the required thickness shows a margin of zero; it used to take the pressure relief off as well. A tank's sized
+mass now includes its two domes, as the book's area does (p.654). Three page references were corrected. The tab shows
+the shell-by-shell table and explains what a sized monocoque is.
+
+*The Uncertainty analysis starts from the vehicle on the Summary*, with its edits and its optimised split; it re-read
+the design file. Its tab now shows the lift-off mass range it computes; it showed only the chart, because the numbers
+were looked up under the wrong names. It answers a different question from the Sensitivity tab (how far the model's own
+mass relationships could be wrong, not what your choices cost), and both tabs now say so.
+
+*Solid motor internal ballistics burns the whole grain.* Only the bore widened, so the propellant in the domes never
+burned: on Scout's third stage the burn consumed 597 kg of a 985 kg grain and delivered 61 % of the sized impulse. The
+bore's ends now burn into the domes as well, so the total impulse is the sized one, and the design pressure is matched
+at the burning area averaged over the propellant, so neither the dying tail nor a motor whose propellant is mostly in
+its domes skews it: across six solid vehicles the action time is 0.93-1.22 of the sized burn time. The tab and report
+give the action time (until thrust falls below 10 % of its peak, an assumed convention), web burnout, the share burned
+in the tail and the peak chamber pressure against the one the casing was sized for, and say which stages were left out
+and why. Scout's first two stages used to vanish from it without a word: their propellant (PBAN) had the book's c* only
+in a text note and no burn-rate exponent. PBAN and the ammonium-nitrate composite now carry c* from Table 4.7 (p.238)
+and the same ASSUMED exponent, 0.35, as the HTPB entry; nothing in the sizing reads either value. The tab explains each
+quantity.
+
+*MERLIN has its own icon*: a rocket wearing a wizard's hat, as a black silhouette with a white outline so it shows on a
+dark taskbar, on the app, its window and taskbar button, and the page's tab. `tools/make_icon.py` draws it.
+
+*A constant-wind example profile* (20 m/s at every altitude) ships in examples/wind_profiles, and the Loads tab lists
+the shipped profiles to pick from, with a box for your own file.
+
+*The "report the apogee manoeuvre separately" option is gone.* It added an informational GTO-to-GEO line, asked near the
+top of every design including LEO ones.
+
 **What changed in v1.3.1 - the downloaded app opens**
 
 *The app failed to open on a computer where the zip was downloaded and extracted with Explorer*, and said it needed WebView2.

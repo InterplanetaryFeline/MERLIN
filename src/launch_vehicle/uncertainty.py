@@ -112,14 +112,17 @@ def _lognormal(rng: random.Random, sigma: float) -> float:
 
 
 def monte_carlo(design_path: str, assumptions_path: str, n: int = 200, seed: int = 0,
-                overrides: dict | None = None, progress=None) -> dict:
+                overrides: dict | None = None, progress=None, base_spec=None) -> dict:
     """Re-size the vehicle `n` times with the MER coefficients drawn from their scatter.
 
     Returns the samples, the percentiles, the nominal result and a one-at-a-time sensitivity. Samples that fail to
     converge are counted and reported rather than silently dropped: a design that falls apart under plausible MER
     scatter is a finding, not a nuisance.
     """
-    nominal_spec = load_design(design_path, assumptions_path, overrides)
+    # `base_spec` is the vehicle the other tabs show: every sample keeps its delta-v split, including one the
+    # optimiser chose, so the nominal here is that vehicle and not the design file's own split
+    split = None if base_spec is None else (base_spec.dv_mode, base_spec.dv_fractions, base_spec.dv_fixed)
+    nominal_spec = _held(load_design(design_path, assumptions_path, overrides), None, split)
     nominal = size_vehicle(nominal_spec)
     # losses flown for every sample would take a quarter of an hour; they hardly move with the masses, so the nominal's
     # are held
@@ -138,7 +141,7 @@ def monte_carlo(design_path: str, assumptions_path: str, n: int = 200, seed: int
         ov = dict(overrides or {})
         ov.update(_overrides(nominal_spec, draws))
         try:
-            r = size_vehicle(_held(load_design(design_path, assumptions_path, ov), held))
+            r = size_vehicle(_held(load_design(design_path, assumptions_path, ov), held, split))
             if not r.converged:
                 raise SizingError(r.status)
             glom.append(r.glom_kg)
@@ -165,7 +168,7 @@ def monte_carlo(design_path: str, assumptions_path: str, n: int = 200, seed: int
                 p05=qs[0], p50=qs[1], p95=qs[2],
                 dry_p05=_quantiles(dry)[0], dry_p50=_quantiles(dry)[1], dry_p95=_quantiles(dry)[2],
                 sigma=dict(sig), seed=seed,
-                sensitivity=one_at_a_time(design_path, assumptions_path, nominal_spec, nominal, sig, overrides, held),
+                sensitivity=one_at_a_time(design_path, assumptions_path, nominal_spec, nominal, sig, overrides, held, split),
                 note="Log-normal multipliers on each MER group; sigmas are assumptions, see "
                      "config/engineering_assumptions.yaml -> mer_scatter")
 
@@ -181,13 +184,17 @@ def _quantiles(xs):
     return q(0.05), q(0.50), q(0.95)
 
 
-def _held(spec, loss_mps):
+def _held(spec, loss_mps, split=None):
     if loss_mps is not None:
         spec.mission["simulated_loss_mps"] = loss_mps
+    if split is not None and len(spec.stages) >= 2:
+        import copy
+        spec.dv_mode, spec.dv_fractions, spec.dv_fixed = split[0], copy.deepcopy(split[1]), copy.deepcopy(split[2])
+        spec.optimise_dv = False
     return spec
 
 
-def one_at_a_time(design_path, assumptions_path, spec, nominal, sig: dict, overrides=None, held=None) -> list:
+def one_at_a_time(design_path, assumptions_path, spec, nominal, sig: dict, overrides=None, held=None, split=None) -> list:
     """Move each group by +1 sigma on its own and record what GLOM does - the tornado behind the histogram."""
     out = []
     for group, s in sig.items():
@@ -198,7 +205,7 @@ def one_at_a_time(design_path, assumptions_path, spec, nominal, sig: dict, overr
         if not ov:
             continue
         try:
-            r = size_vehicle(_held(load_design(design_path, assumptions_path, ov), held))
+            r = size_vehicle(_held(load_design(design_path, assumptions_path, ov), held, split))
             d = (r.glom_kg - nominal.glom_kg) / nominal.glom_kg if r.converged else float("nan")
         except (SizingError, InputError, ValueError):
             d = float("nan")

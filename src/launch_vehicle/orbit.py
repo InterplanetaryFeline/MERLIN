@@ -16,7 +16,13 @@ from .units import EarthModel, SIDEREAL_YEAR_S
 
 
 class OrbitError(ValueError):
-    """Invalid or unsupported orbit definition."""
+    """Invalid or unsupported orbit definition. `field` is the input to change and `options` the one-click fixes,
+    as the GUI spells them, so the message never leaves the user to find the field it means."""
+
+    def __init__(self, message, field: str | None = None, options: list | None = None):
+        super().__init__(message)
+        self.field = field
+        self.options = options
 
 
 @dataclass(frozen=True)
@@ -37,7 +43,7 @@ class OrbitElements:
 def circular_speed(r: float, mu: float) -> float:
     """Eq. 3:1: v = sqrt(mu/r)."""
     if r <= 0:
-        raise OrbitError("orbital radius must be positive")
+        raise OrbitError("orbital radius must be positive", field="mission.orbit.perigee_altitude_km")
     return math.sqrt(mu / r)
 
 
@@ -45,7 +51,7 @@ def vis_viva(r: float, a: float, mu: float) -> float:
     """Eq. 3:4: v = sqrt(mu (2/r - 1/a))."""
     val = mu * (2.0 / r - 1.0 / a)
     if val <= 0:
-        raise OrbitError("vis-viva gives non-positive v^2 (bound orbit requires r <= 2a)")
+        raise OrbitError("vis-viva gives non-positive v^2 (bound orbit requires r <= 2a)", field="mission.orbit.apogee_altitude_km")
     return math.sqrt(val)
 
 
@@ -61,22 +67,29 @@ def orbit_from_altitudes(earth: EarthModel, perigee_alt_m: float, apogee_alt_m: 
                          eccentricity: float | None = None, inclination_deg: float = 0.0) -> OrbitElements:
     R = earth.radius_m
     if perigee_alt_m <= 0:
-        raise OrbitError("perigee altitude must be > 0")
+        raise OrbitError("perigee altitude must be > 0", field="mission.orbit.perigee_altitude_km")
     rp = R + perigee_alt_m
     if apogee_alt_m is None and eccentricity is None:
         apogee_alt_m = perigee_alt_m
     if apogee_alt_m is not None and eccentricity is not None:
         ra_chk = rp * (1 + eccentricity) / (1 - eccentricity)
         if abs(ra_chk - (R + apogee_alt_m)) > 1.0:
-            raise OrbitError("apogee altitude and eccentricity are inconsistent (specify only one)")
+            raise OrbitError("apogee altitude and eccentricity are inconsistent (specify only one)",
+                             field="mission.orbit.eccentricity",
+                             options=[{"label": "Clear the eccentricity", "path": "mission.orbit.eccentricity", "value": None,
+                                       "note": "the apogee altitude then sets the orbit on its own"}])
     if apogee_alt_m is None:
         if not (0 <= eccentricity < 1):
-            raise OrbitError("eccentricity must satisfy 0 <= e < 1")
+            raise OrbitError("eccentricity must satisfy 0 <= e < 1", field="mission.orbit.eccentricity")
         ra = rp * (1 + eccentricity) / (1 - eccentricity)
         apogee_alt_m = ra - R
     ra = R + apogee_alt_m
     if ra < rp:
-        raise OrbitError("apogee radius is below perigee radius")
+        raise OrbitError(f"the apogee ({apogee_alt_m / 1e3:,.0f} km) is below the perigee ({perigee_alt_m / 1e3:,.0f} km)",
+                         field="mission.orbit.apogee_altitude_km",
+                         options=[{"label": f"Make it circular at {perigee_alt_m / 1e3:,.0f} km",
+                                   "path": "mission.orbit.apogee_altitude_km", "value": None,
+                                   "note": "no apogee: the orbit is circular at the perigee altitude"}])
     a = 0.5 * (ra + rp)
     e = (ra - rp) / (ra + rp)
     mu = earth.mu_m3s2
@@ -95,7 +108,7 @@ def sso_inclination_deg(earth: EarthModel, a_m: float, e: float) -> float:
     rate = 2.0 * math.pi / SIDEREAL_YEAR_S
     cos_i = -rate / (1.5 * earth.j2 * n * (earth.radius_m / p) ** 2)
     if abs(cos_i) > 1:
-        raise OrbitError("no sun-synchronous inclination exists for this altitude")
+        raise OrbitError("no sun-synchronous inclination exists for this altitude", field="mission.orbit.perigee_altitude_km")
     return math.degrees(math.acos(cos_i))
 
 
@@ -109,7 +122,11 @@ def launch_azimuth_deg(inclination_deg: float, latitude_deg: float) -> float:
     if abs(c) > 1.0 + 1e-12:
         raise OrbitError(
             f"inclination {inclination_deg:.2f} deg is lower than launch-site latitude "
-            f"{latitude_deg:.2f} deg: a direct ascent is impossible (dog-leg / plane change not modelled)")
+            f"{latitude_deg:.2f} deg: a direct ascent is impossible (dog-leg / plane change not modelled)",
+            field="mission.orbit.inclination_deg",
+            options=[{"label": f"Set the inclination to {math.ceil(abs(latitude_deg) * 10) / 10:.1f} deg",
+                      "path": "mission.orbit.inclination_deg", "value": math.ceil(abs(latitude_deg) * 10) / 10,
+                      "note": "the lowest a direct ascent from this site reaches"}])
     return math.degrees(math.asin(max(-1.0, min(1.0, c))))
 
 

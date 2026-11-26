@@ -394,7 +394,7 @@ LEAF_LABELS: dict = {
     "payload_envelope_diameter_m": "Payload envelope diameter",
     "payload_envelope_length_m": "Payload envelope length",
     "delta_v_override_mps": "Total delta-v required (override)",
-    "report_apogee_maneuver": "Report the apogee manoeuvre separately",
+
     "perigee_altitude_km": "Perigee altitude", "apogee_altitude_km": "Apogee altitude",
     "eccentricity": "Eccentricity", "inclination_deg": "Inclination",
     "site": "Launch site", "latitude_deg": "Launch site latitude", "altitude_m": "Launch site altitude",

@@ -286,6 +286,43 @@ def size_solid_stage(stage, m_prop_loaded_kg: float, solid_props: dict) -> list:
 # delivers its own design chamber pressure at its mean burning area - so the solution reproduces the sizing on
 # average and shows how far the real profile departs from it.
 # ===========================================================================================================
+def _dome_void(R: float, h: float, r: float, e: float) -> float:
+    """Volume of one semi-ellipsoidal dome (radius R, height h) inside a bore of radius r whose flat end has moved
+    a distance e from the dome's equator into it. Closed form: the slice area is pi min(r, rho(z))^2 with
+    rho(z) = R sqrt(1 - (z/h)^2), which is r up to z_b = h sqrt(1 - (r/R)^2) and rho(z)^2 beyond it."""
+    if r <= 0 or e <= 0 or h <= 0:
+        return 0.0
+    e = min(e, h)
+    zb = h * math.sqrt(max(1.0 - (min(r, R) / R) ** 2, 0.0))
+    if e <= zb:
+        return math.pi * r * r * e
+    f = lambda z: R * R * (z - z ** 3 / (3.0 * h * h))               # noqa: E731 - integral of rho(z)^2
+    return math.pi * (r * r * zb + f(e) - f(zb))
+
+
+def regressed_grain_volume(case: "MotorCase", web_burned_m: float) -> float:
+    """Propellant left after the burning surface has moved `web_burned_m` normal to itself everywhere.
+
+    The bore widens by the web, and where the bore stops at the domes its flat ends burn into them by the same
+    distance, so the dome propellant is consumed too. Before v1.3.2 only the bore widened: the domes never burned,
+    and on Scout's third stage the profile consumed 597 kg of a 985 kg grain. A bore cut through the domes widens
+    through them, which grain_volume already describes."""
+    R, h, hc = case.R_int, case.h_dome, case.h_cyl
+    r = min(case.R_bore + web_burned_m, R)
+    if case.bore_full_length:
+        return grain_volume(R, h, hc, r, True)
+    full = math.pi * R * R * hc + 2.0 * (2.0 * math.pi * R * R * h / 3.0)
+    void = math.pi * r * r * hc + 2.0 * _dome_void(R, h, r, web_burned_m)
+    return max(full - void, 0.0)
+
+
+def burn_web_m(case: "MotorCase") -> float:
+    """How far the surface moves before the grain is gone: the radial web, or the dome depth when the bore's ends
+    have further to burn into the domes than its side has to the wall."""
+    radial = max(case.R_int - case.R_bore, 0.0)
+    return radial if case.bore_full_length else max(radial, case.h_dome)
+
+
 def burn_area_m2(case: MotorCase, web_burned_m: float, dw: float = 1e-5) -> float:
     """Burning surface at a given regressed web, as -dV/dw of the cast grain.
 
@@ -293,12 +330,10 @@ def burn_area_m2(case: MotorCase, web_burned_m: float, dw: float = 1e-5) -> floa
     Fig. 4.12 #1 it reduces to 2 pi (R_bore + w) h_cyl - a surface that GROWS as the grain burns, which is why
     the book says that shape "will produce thrust levels that increase with time" (p.233).
     """
-    r = case.R_bore + web_burned_m
-    if r >= case.R_int:
+    if web_burned_m >= burn_web_m(case):
         return 0.0
-    lo = grain_volume(case.R_int, case.h_dome, case.h_cyl, min(r + dw, case.R_int), case.bore_full_length)
-    hi = grain_volume(case.R_int, case.h_dome, case.h_cyl, max(r - dw, 0.0), case.bore_full_length)
-    return max((hi - lo) / (min(r + dw, case.R_int) - max(r - dw, 0.0)), 0.0)
+    w0, w1 = max(web_burned_m - dw, 0.0), web_burned_m + dw
+    return max((regressed_grain_volume(case, w0) - regressed_grain_volume(case, w1)) / (w1 - w0), 0.0)
 
 
 def end_burner_area_m2(case: MotorCase) -> float:
@@ -330,6 +365,10 @@ def calibrate_burning_rate_coefficient(rho: float, c_star: float, A_b_ref: float
     return pc_design_Pa ** (1.0 - n) * A_t / (rho * c_star * A_b_ref)
 
 
+#: the fraction of peak thrust that ends the action time (ASSUMED: a common convention, not from the book)
+ACTION_FRACTION = 0.10
+
+
 def burn_profile(case: MotorCase, rho_kg_m3: float, c_star_mps: float, n: float, A_t_m2: float,
                  pc_design_Pa: float, isp_vac_s: float, grain: str = "core", steps: int = 240) -> dict:
     """Chamber pressure, burn rate, mass flow and thrust through the burn, against time.
@@ -341,7 +380,7 @@ def burn_profile(case: MotorCase, rho_kg_m3: float, c_star_mps: float, n: float,
     if n <= 0 or c_star_mps <= 0:
         return dict(ok=False, reason="this propellant has no burn-rate exponent or c* in the library, so the "
                                      "internal ballistics cannot be solved without inventing them")
-    web = max(case.R_int - case.R_bore, 0.0)
+    web = burn_web_m(case)
     if grain == "end":
         areas = [(w, end_burner_area_m2(case)) for w in
                  [case.h_cyl * i / steps for i in range(steps + 1)]]
@@ -351,7 +390,15 @@ def burn_profile(case: MotorCase, rho_kg_m3: float, c_star_mps: float, n: float,
     live = [(w, A) for w, A in areas if A > 0]
     if len(live) < 2:
         return dict(ok=False, reason="the grain has no burning surface to regress")
-    A_mean = sum(A for _w, A in live) / len(live)
+    # the design pressure is matched at the burning area averaged over the PROPELLANT, sum(A^2 dw)/sum(A dw): each
+    # surface counts by what it burns. A plain mean over the web let the dome tail's vanishing areas drag it down
+    # and over-pressure the main burn; a mean over the main burn alone missed the propellant of a short, fat motor,
+    # most of which is in its domes and burns after the bore reaches the wall
+    num = den = 0.0
+    for (w0, A0), (w1, A1) in zip(live, live[1:]):
+        num += 0.5 * (A0 * A0 + A1 * A1) * (w1 - w0)
+        den += 0.5 * (A0 + A1) * (w1 - w0)
+    A_mean = num / den if den > 0 else sum(A for _w, A in live) / len(live)
     a = calibrate_burning_rate_coefficient(rho_kg_m3, c_star_mps, A_mean, A_t_m2, n, pc_design_Pa)
 
     pts, t = [], 0.0
@@ -367,6 +414,18 @@ def burn_profile(case: MotorCase, rho_kg_m3: float, c_star_mps: float, n: float,
             t += 2.0 * dw / (r + r_next) if (r + r_next) > 0 else 0.0
     thrusts = [p["thrust_N"] for p in pts]
     pcs = [p["pc_Pa"] for p in pts]
+    # where the bore's side reaches the case wall; after it only the dome ends are left, burning on a shrinking
+    # surface at a falling pressure (the tail-off)
+    radial = max(case.R_int - case.R_bore, 0.0)
+    # the last point before the bore's side reaches the wall, where the burning area is largest
+    k_web = max(next((i for i, p in enumerate(pts) if p["web_m"] >= radial - 1e-12), len(pts)) - 1, 0)
+    burned = [0.0]
+    for i in range(len(pts) - 1):
+        burned.append(burned[-1] + 0.5 * (pts[i]["mdot_kgs"] + pts[i + 1]["mdot_kgs"]) * (pts[i + 1]["t_s"] - pts[i]["t_s"]))
+    # action time: thrust above ACTION_FRACTION of its peak. A common convention, ASSUMED here; the grain's last
+    # slivers burn at a pressure no real motor sustains, so the whole tail is not a burn time anyone would quote
+    peak = max(thrusts)
+    k_act = max((i for i, f in enumerate(thrusts) if f >= ACTION_FRACTION * peak), default=len(pts) - 1)
     impulse = sum(0.5 * (pts[i]["thrust_N"] + pts[i + 1]["thrust_N"]) * (pts[i + 1]["t_s"] - pts[i]["t_s"])
                   for i in range(len(pts) - 1))
     return dict(ok=True, grain=grain, points=pts, a_calibrated=a, n=n, c_star_mps=c_star_mps, A_t_m2=A_t_m2,
@@ -375,4 +434,13 @@ def burn_profile(case: MotorCase, rho_kg_m3: float, c_star_mps: float, n: float,
                 thrust_mean_N=(impulse / pts[-1]["t_s"] if pts[-1]["t_s"] > 0 else 0.0),
                 pc_max_Pa=max(pcs), pc_min_Pa=min(pcs), pc_design_Pa=pc_design_Pa,
                 Kn_min=min(p["Kn"] for p in pts), Kn_max=max(p["Kn"] for p in pts),
-                progressive=thrusts[-1] > thrusts[0], stable=n < 1.0)
+                # over the main burn: the dome tail always falls away, whatever the bore does
+                progressive=thrusts[k_web] > thrusts[0], stable=n < 1.0,
+                web_burnout_t_s=pts[k_web]["t_s"], action_time_s=pts[k_act]["t_s"], action_fraction=ACTION_FRACTION,
+                tail_fraction=(1.0 - burned[k_web] / burned[-1]) if burned[-1] > 0 else 0.0,
+                mass_burned_kg=burned[-1], thrust_peak_t_s=pts[thrusts.index(peak)]["t_s"],
+                thrust_web_burnout_N=thrusts[k_web], Kn_start=pts[0]["Kn"],
+                impulse_action_Ns=sum(0.5 * (thrusts[i] + thrusts[i + 1]) * (pts[i + 1]["t_s"] - pts[i]["t_s"])
+                                      for i in range(k_act)),
+                thrust_mean_action_N=(sum(0.5 * (thrusts[i] + thrusts[i + 1]) * (pts[i + 1]["t_s"] - pts[i]["t_s"])
+                                          for i in range(k_act)) / pts[k_act]["t_s"]) if pts[k_act]["t_s"] > 0 else 0.0)

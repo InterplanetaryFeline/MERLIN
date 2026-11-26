@@ -9,7 +9,6 @@ mission:
   payload_envelope_diameter_m: {v: 0.9, u: m, d: "Payload static envelope diameter", s: "User requirement", t: assumed}
   payload_envelope_length_m: {v: 1.2, u: m, d: "Payload static envelope length", s: "User requirement", t: assumed}
   delta_v_override_mps: {v: null, u: m/s, d: "Budget override (unused)", s: "User", t: user}
-  report_apogee_maneuver: {v: false, u: "-", d: "Not applicable", s: "Option", t: user}
   orbit:
     type: {v: SSO, u: "-", d: "Sun-synchronous orbit (inclination computed from J2)", s: "User requirement", t: user}
     perigee_altitude_km: {v: 500.0, u: km, d: "Circular injection altitude", s: "User requirement", t: user}

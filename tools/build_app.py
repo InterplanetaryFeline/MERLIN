@@ -130,7 +130,11 @@ def main(argv=None) -> int:
             print(f"missing {mod}: pip install pyinstaller pywebview")
             return 1
 
+    # the rocket in the wizard's hat (tools/make_icon.py draws it): the exe's icon, which Windows also puts on the
+    # window's title bar and the taskbar
+    icon = os.path.join(ROOT, "src", "launch_vehicle", "gui_static", "merlin.ico")
     cmd = [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", "--windowed", "--name", "MERLIN",
+           "--icon", icon,
            "--distpath", DIST, "--workpath", os.path.join(ROOT, "build"), "--specpath", os.path.join(ROOT, "build"),
            "--paths", os.path.join(ROOT, "src"),
            "--collect-submodules", "launch_vehicle",

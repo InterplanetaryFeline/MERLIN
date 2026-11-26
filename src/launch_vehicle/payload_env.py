@@ -62,6 +62,29 @@ DYNAMIC_LATERAL_G = {"liftoff": 2.0, "max_q": 1.6, "burnout": 0.5, "separation":
 
 MIN_FREQUENCY_RATIO = 2.0          # book Sec. 11.5.3: spacecraft modes at least twice the vehicle's
 
+#: Arianespace, Ariane 6 User's Manual, Issue 2 Revision 0, February 2021. The criterion a launcher's guide gives
+#: for dropping the fairing: the free-molecular heat flux on a plane normal to the velocity, 1/2 rho v^3, at or
+#: below 1,135 W/m2 at and after jettison (sec. 3.3.3.2, p.3-14; "the standard value", sec. 2.3.1, p.2-3).
+FMH_LIMIT_W_M2 = 1135.0
+#: The same manual's limit on the fall of pressure under the fairing: 2.5 kPa/s for most of the flight, up to
+#: 4.0 kPa/s for less than 5 s near transonic (sec. 3.2.8.2, p.3-8).
+VENT_RATE_KPA_S = (2.5, 4.0)
+#: What a real guide specifies and this tool cannot compute, with Ariane 6's published figures beside each, so a
+#: reader sees the order of magnitude a payload is designed to. A REFERENCE, NOT A RESULT FOR THIS VEHICLE.
+ARIANE6_REFERENCE = [
+    ("Sine-equivalent vibration", "longitudinal 1.0 g (2-50 Hz), 0.8 g (50-100 Hz); lateral 0.8 g (2-25 Hz), "
+     "0.6 g (25-100 Hz)", "sec. 3.2.4, Table 3.2.3.a, p.3-5",
+     "needs the vehicle's structural modes and a coupled-loads analysis"),
+    ("Random vibration", "covered by the sine levels below 100 Hz and by the acoustic spectrum above",
+     "sec. 3.2.5, p.3-5", "needs a structural-acoustic model"),
+    ("Acoustic noise under the fairing", "OASPL 139.5 dB (20-2828 Hz); octave peak 136 dB at 125 Hz",
+     "sec. 3.2.6.2, Table 3.2.6.2.a, p.3-6", "the book gives no prediction method (Chapter 11)"),
+    ("Shock at the spacecraft interface", "clamp-band release: 20 g at 100 Hz, 1,000 g at 1,000 Hz, 700 g at "
+     "10,000 Hz", "sec. 3.2.7, Fig. 3.2.7.a, p.3-8", "set by the separation system, which is not modelled"),
+    ("Radiated flux from the fairing before jettison", "at most 1,000 W/m2", "sec. 3.3.3.1, p.3-14",
+     "needs a fairing thermal model"),
+]
+
 
 @dataclass
 class QSLRow:
@@ -93,6 +116,7 @@ class PayloadEnvironment:
     governing_lateral_event: str = ""
     within_typical: dict = field(default_factory=dict)
     notes: list = field(default_factory=list)
+    flight: dict = field(default_factory=dict)     # the time histories and what they say; see flight_environment
 
 
 def _classify(name: str) -> str:
@@ -170,6 +194,46 @@ def build(res, traj=None, load_cases: dict | None = None,
         lateral=TYPICAL_LATERAL_G[0] <= out.design_lateral_g <= TYPICAL_LATERAL_G[1],
         axial_range=TYPICAL_AXIAL_G, lateral_range=TYPICAL_LATERAL_G)
     out.notes = _notes(out)
+    out.flight = flight_environment(res, traj)
+    return out
+
+
+def flight_environment(res, traj) -> dict:
+    """What the ascent does to the payload over time, from the flown trajectory: the axial load factor, the
+    free-molecular heat flux it would see with the fairing off, and how fast the outside pressure falls.
+
+    The flux is 1/2 rho v^3, which is the dynamic pressure times the speed, so it uses the same air the flight
+    flew through. The pressure is the ambient static pressure on the flown altitude; the pressure under the
+    fairing follows it through the vents with a lag, so its fall is no faster than this and the figure is an
+    upper bound on what the venting has to keep up with.
+    """
+    from .atmosphere import air
+    from .loads import axial_load_factor
+    if traj is None or not traj.t_s:
+        return {}
+    model = (res.spec.mission.get("atmosphere_model") or "book_exponential")
+    t, n = traj.t_s, len(traj.t_s)
+    fmh = [traj.q_Pa[k] * traj.v_mps[k] for k in range(n)]
+    p_kPa = [air(traj.h_m[k], model).pressure_Pa / 1e3 for k in range(n)]
+    nx = [axial_load_factor(traj, k) for k in range(n)]
+    dpdt = [0.0] + [-(p_kPa[k] - p_kPa[k - 1]) / (t[k] - t[k - 1]) if t[k] > t[k - 1] else 0.0
+                    for k in range(1, n)]
+    kdp = max(range(n), key=lambda k: dpdt[k])
+    jett = next((e for e in traj.events if "fairing" in e["name"].lower()), None)
+    out = dict(t_s=list(t), axial_g=nx, fmh_W_m2=fmh, p_kPa=p_kPa, dpdt_kPa_s=dpdt,
+               fmh_limit_W_m2=FMH_LIMIT_W_M2, vent_rate_kPa_s=VENT_RATE_KPA_S,
+               max_dpdt_kPa_s=dpdt[kdp], max_dpdt_t_s=t[kdp], max_dpdt_h_m=traj.h_m[kdp],
+               max_axial_g=max(nx), max_axial_t_s=t[max(range(n), key=lambda k: nx[k])],
+               max_q_kPa=max(traj.q_Pa) / 1e3, max_q_t_s=traj.max_q_t_s)
+    # the earliest instant after which the flux never again reaches the limit, over the flight shown
+    last_over = max((k for k in range(n) if fmh[k] > FMH_LIMIT_W_M2), default=-1)
+    if 0 <= last_over < n - 1:
+        out["fmh_ok_from_t_s"], out["fmh_ok_from_h_m"] = t[last_over + 1], traj.h_m[last_over + 1]
+    if jett is not None:
+        k = min(range(n), key=lambda i: abs(t[i] - jett["t_s"]))
+        out.update(jettison_t_s=t[k], jettison_h_m=traj.h_m[k], jettison_fmh_W_m2=fmh[k],
+                   jettison_fmh_after_W_m2=max(fmh[k:]),
+                   jettison_ok=max(fmh[k:]) <= FMH_LIMIT_W_M2)
     return out
 
 

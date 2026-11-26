@@ -1140,8 +1140,10 @@ def _structure(res, extras, figures):
            f'below which there is nothing to buy (Table 10.2). The thickness reported is the largest of those, '
            f'over every case. <b>Nothing here is fed back into the vehicle</b> \u2014 the structural masses in '
            f'the mass statement still come from the Chapter 8 relationships.</div>']
-    rows = [["Material", _e(mat.name), f"E = {mat.E_Pa/1e9:,.0f} GPa, &sigma;<sub>allow</sub> = "
-             f"{mat.sigma_allow_Pa/1e6:,.0f} MPa, &rho; = {mat.rho_kg_m3:,.0f} kg/m&sup3;, &mu; = {mat.poisson:.2f}"],
+    rows = [["Material", _e(m.name), f"E = {m.E_Pa/1e9:,.0f} GPa, &sigma;<sub>allow</sub> = "
+             f"{m.sigma_allow_Pa/1e6:,.0f} MPa, &rho; = {m.rho_kg_m3:,.0f} kg/m&sup3;, &mu; = {m.poisson:.2f}"]
+            for m in (out_s.get("materials") or [mat])]
+    rows += [
             ["Minimum gauge", f"{mat.t_min_m*1e3:.2f} mm", "book Table 10.2, aluminium skin"],
             ["Factor of safety", f"{fs:.2f}", "the value the book uses throughout Chapter 10"],
             ["Load cases applied", f"{len(out_s['cases'])}", _e(", ".join(out_s["cases"]))]]
@@ -1200,18 +1202,23 @@ def _ballistics(res, extras, figures):
     rows = []
     for p in profs:
         rows.append([f"{p['stage']}", _e(p.get("propellant", "")), f"{p['n']:.2f}",
-                     f"{p['Kn_min']:,.0f}&ndash;{p['Kn_max']:,.0f}",
+                     f"{p.get('Kn_start', p['Kn_min']):,.0f} &rarr; {p['Kn_max']:,.0f}",
                      f"{p['design_thrust_N']/1e3:,.0f}",
-                     f"{p['thrust_initial_N']/1e3:,.0f} &rarr; {p['thrust_final_N']/1e3:,.0f}",
-                     f"{p['thrust_mean_N']/1e3:,.0f}",
+                     f"{p['thrust_initial_N']/1e3:,.0f} &rarr; {p['thrust_max_N']/1e3:,.0f}",
+                     f"{p['thrust_mean_action_N']/1e3:,.0f}",
                      f"{p['pc_design_Pa']/1e6:.1f}", f"{p['pc_max_Pa']/1e6:.1f}",
-                     f"{p['design_burn_time_s']:,.0f}", f"{p['burn_time_s']:,.0f}"])
+                     f"{p['design_burn_time_s']:,.0f}", f"{p['action_time_s']:,.1f}",
+                     f"{100 * p['tail_fraction']:.0f} %"])
     out.append(_tbl(["Stage", "Propellant", "n", "K<sub>n</sub> = A<sub>b</sub>/A<sub>t</sub>",
-                     "Thrust assumed [kN]", "Thrust delivered [kN]", "Mean [kN]",
+                     "Thrust assumed [kN]", "Thrust, start &rarr; peak [kN]", "Mean over the action time [kN]",
                      "P<sub>c</sub> design [MPa]", "P<sub>c</sub> peak [MPa]",
-                     "Burn assumed [s]", "Burn delivered [s]"], rows, numeric=(0, 2, 4, 6, 7, 8, 9, 10)))
+                     "Burn assumed [s]", "Action time [s]", "Burned in the tail"], rows,
+                    numeric=(0, 2, 4, 6, 7, 8, 9, 10, 11)))
+    for p in ((extras or {}).get("ballistics") or []):
+        if not p.get("ok"):
+            out.append(f'<p class="small">Stage {p.get("stage")} is not shown: {_e(p.get("reason", ""))}.</p>')
     worst = max(profs, key=lambda p: p["pc_max_Pa"] / max(p["pc_design_Pa"], 1.0))
-    ratio = worst["thrust_final_N"] / max(worst["thrust_initial_N"], 1.0)
+    ratio = worst["thrust_max_N"] / max(worst["thrust_initial_N"], 1.0)
     out.append(f'<p><b>The simplest grain cannot deliver the thrust the sizing assumed.</b> A plain '
                f'cylindrical bore is <i>progressive</i>: its burning surface grows as it regresses, so thrust '
                f'climbs through the burn \u2014 by a factor of {ratio:.1f} on stage {worst["stage"]}, taking '
@@ -1227,10 +1234,13 @@ def _ballistics(res, extras, figures):
                'propellant library (the book gives the typical range 0.4&ndash;0.7 but no value for any '
                'propellant), c* from Table 4.7, and the throat area from Eq. 8:28. The burning-rate '
                'coefficient a is <b>not</b> assumed: it is solved for so that each motor reaches its own '
-               'design chamber pressure at its mean burning area, which makes these curves a statement about '
-               'the grain shape rather than about a propellant this tool has no measured data for. The '
-               'delivered burn time and total impulse therefore differ from the sized ones, and that '
-               'difference is the finding, not an error to reconcile.</p>')
+               'design chamber pressure at its burning area averaged over the propellant, which makes these curves a statement about '
+               'the grain shape rather than about a propellant this tool has no measured data for. The whole '
+               'grain burns: the bore widens and its ends burn into the domes, so the total impulse is the '
+               'sized one. After the bore reaches the case wall only the dome ends are left, burning on a '
+               'shrinking surface at a falling pressure; the action time ends where thrust falls below '
+               f'{100 * profs[0].get("action_fraction", 0.1):.0f} % of its peak, a common convention and an '
+               'assumption here, and the share burned after web burnout is the tail.</p>')
     out.append('<p class="small"><b>What is not modelled.</b> Only the two grain shapes the book describes '
                'completely: the end burner and the hollow cylinder. The star, cog and finocyl grains of '
                'Fig. 4.12 are drawn but never dimensioned, so their burning-area laws are not in this book and '
@@ -1279,6 +1289,39 @@ def _payload_env(res, extras, figures):
     out.append(_tbl(["Flight condition", "Axial [g]", "Axial dynamic [g]", "Lateral [g]"], av,
                     numeric=(1, 2, 3)))
     out.append('<p class="small">' + "<br>".join(env.notes) + "</p>")
+    f = env.flight or {}
+    if f:
+        from .payload_env import ARIANE6_REFERENCE
+        out.append("<h3>What the ascent does to the payload over time</h3>")
+        rows = [["Maximum dynamic pressure", f"{_f(f['max_q_kPa'], 1)} kPa at t = {_f(f['max_q_t_s'])} s"],
+                ["Highest steady axial load factor", f"{f['max_axial_g']:.2f} g at t = {_f(f['max_axial_t_s'])} s"],
+                ["Fastest fall of outside pressure", f"{f['max_dpdt_kPa_s']:.2f} kPa/s at t = {_f(f['max_dpdt_t_s'])} s, "
+                 f"{_f(f['max_dpdt_h_m'] / 1e3, 1)} km"]]
+        if "jettison_t_s" in f:
+            rows += [["Fairing jettison", f"t = {_f(f['jettison_t_s'])} s, {_f(f['jettison_h_m'] / 1e3, 1)} km"],
+                     ["Free-molecular flux at and after jettison",
+                      f"{_f(f['jettison_fmh_W_m2'])} W/m&sup2; at jettison, at most {_f(f['jettison_fmh_after_W_m2'])} after"]]
+        rows.append(["Flux below the limit from", f"t = {_f(f['fmh_ok_from_t_s'])} s, {_f(f['fmh_ok_from_h_m'] / 1e3, 1)} km"
+                     if f.get("fmh_ok_from_t_s") else "not within the flight shown"])
+        out.append(_tbl(["", "Value"], rows))
+        out.append(_img(figures.get("payload_env_png"), "<b>Payload environment in flight.</b> Steady axial load "
+                        "factor; free-molecular heat flux 1/2&rho;v&sup3; against the 1,135 W/m&sup2; jettison criterion; "
+                        "fall of outside pressure against the 2.5 and 4.0 kPa/s limits under the fairing. Limits from "
+                        "Arianespace, Ariane 6 User&rsquo;s Manual, Issue 2 Rev. 0 (Feb. 2021), sec. 3.3.3.2 and 3.2.8.2."))
+        out.append('<p class="small">The flux uses the flight&rsquo;s own atmosphere model. The book&rsquo;s exponential '
+                   'model keeps one scale height all the way up, and the real atmosphere thins more slowly above about '
+                   '90 km, so the altitude where the flux falls under the limit is probably later than a real '
+                   'launcher&rsquo;s. The pressure is the outside air&rsquo;s; the pressure under the fairing lags it '
+                   'through the vents, so its fall is an upper bound on what the venting must manage.'
+                   + ("" if f.get("jettison_ok", True) else " <b>Here the fairing comes off before the flux has fallen "
+                      "to the limit.</b> When it comes off is an input: the stage at whose start it is jettisoned.")
+                   + "</p>")
+        out.append("<h3>Not computed: what a real guide also specifies</h3>")
+        out.append('<p class="small">Ariane 6&rsquo;s published figures, as a reference for what a payload is designed '
+                   'to, not a result for this vehicle (Arianespace, Ariane 6 User&rsquo;s Manual, Issue 2 Revision 0, '
+                   'February 2021).</p>')
+        out.append(_tbl(["Environment", "Ariane 6 figure", "Where", "Why it is not computed"],
+                        [[_e(x) for x in r] for r in ARIANE6_REFERENCE]))
     return "".join(out)
 
 
@@ -1496,9 +1539,11 @@ def _ledger(res):
     # 0, -1 and -2 are the ledger's numbers for the payload, the fairing and the strap-ons; "upper" used to
     # stand for both of the last two, which put the boosters at the top of the vehicle
     where = {0: "payload", -1: "fairing", -2: "boosters"}
-    rows = [[_e(i.stage) if i.stage >= 1 else where.get(i.stage, "-"), _e(i.group), _e(i.name), _f(i.mass_kg, 1),
-             f"{i.z_m:.3f}", _e(i.kind), _e(i.shape), _e(i.source)] for i in res.ledger]
-    rows.append(("sum", ["", "", "<b>Total</b>", f"<b>{_f(sum(i.mass_kg for i in res.ledger))}</b>",
+    from .mass_properties import at_liftoff, liftoff_total
+    rows = [[_e(i.stage) if i.stage >= 1 else where.get(i.stage, "-"), _e(i.group),
+             _e(i.name) + ("" if at_liftoff(res, i) else " <i>(at burnout; inside the loaded propellant)</i>"),
+             _f(i.mass_kg, 1), f"{i.z_m:.3f}", _e(i.kind), _e(i.shape), _e(i.source)] for i in res.ledger]
+    rows.append(("sum", ["", "", "<b>Total at lift-off</b>", f"<b>{_f(liftoff_total(res))}</b>",
                          "", "", "", ""]))
     out.append("<details open><summary>Full mass ledger (%d items)</summary>" % len(res.ledger))
     out.append(_tbl(["Stage", "Group", "Component", "Mass [kg]", "z_cm [m]", "Kind", "Inertia shape",

@@ -92,7 +92,7 @@ def pressure_axial_relief_Pa(p_Pa: float, R_m: float, t_m: float) -> float:
 
 
 def shear_stress_Pa(V_N: float, R_m: float, t_m: float) -> float:
-    """tau = V / (2 pi R t) (p.648)."""
+    """tau = V / (2 pi R t), the form the book's Example 1b states and uses (p.633)."""
     return V_N / (2.0 * math.pi * R_m * t_m)
 
 
@@ -187,7 +187,7 @@ def t_required_buckling_m(P_N: float, M_Nm: float, R_m: float, L_m: float, E_Pa:
     """Eqs. 10.45 / 10.46: the thickness at which the applied stress equals the critical stress.
 
     "The buckling stress equations 10.41 and 10.42 can't be solved in closed form, and must be instead solved
-    numerically" (p.653) - the book suggests a spreadsheet goal-seek; this is a bisection, which cannot miss a
+    numerically" (p.652) - the book suggests a spreadsheet goal-seek; this is a bisection, which cannot miss a
     root once it is bracketed. The applied stress falls like 1/t and the critical stress rises faster than t,
     so their difference changes sign exactly once and the bracket is guaranteed.
     """
@@ -300,7 +300,12 @@ def analyse_shell(name: str, kind: str, stage: int, R_m: float, L_m: float, r_sm
         s_crit = critical_stress_Pa(t, R_m, L_m, material.E_Pa, cl["p_Pa"])
         worst = max(abs(s_vert), abs(s_hoop))
         m_str = (material.sigma_allow_Pa / (fs * worst) - 1.0) if worst > 0 else math.inf
-        m_bkl = (s_crit / (fs * s_vert) - 1.0) if s_vert > 0 else math.inf
+        # against the same applied stress the required buckling thickness is solved for - the whole compression,
+        # with pressure counted once, through Kp - so a wall at the required thickness has a margin of zero. It
+        # used to take the pressure relief off as well, which could show a positive margin on a wall thinner
+        # than the one the same table called required.
+        s_gross = abs(axial_stress_Pa(cl["P_N"], R_m, t)) + abs(bending_stress_Pa(cl["M_Nm"], R_m, t))
+        m_bkl = (s_crit / (fs * s_gross) - 1.0) if s_gross > 0 else math.inf
         case = ShellCase(cl["case"], cl["P_N"], cl["M_Nm"], cl["V_N"], cl["p_Pa"], cl["p_hydro_Pa"],
                          cl["n_x"], t_ax, t_ho, t_sh, t_bk, s_vert, s_hoop, tau, m_str, m_bkl)
         if abs(R_m - r_small_m) > 1e-6:
@@ -393,11 +398,29 @@ def analyse(res, cases: dict, material: "Material | None" = None, fs: float = 1.
     Chapter 10's examples.
     """
     spec, geom = res.spec, res.geometry
-    mat = material or Material.from_tank_material(spec.stages[0].tank.material)
     shells, notes = [], []
     live = [(k, c) for k, c in cases.items() if hasattr(c, "stations")]
+    borrowed = set()
 
-    skipped = []
+    def mat_for(stage_index):
+        """Each shell in its own stage's tank material. A solid stage has no tanks, so its skirts and interstage
+        take the nearest liquid stage's material, or the library's aluminium when there is none (ASSUMED)."""
+        if material is not None:
+            return material
+        st_ = spec.stages[stage_index - 1]
+        if not st_.is_solid:
+            return Material.from_tank_material(st_.tank.material)
+        order = sorted(range(len(spec.stages)), key=lambda j: (abs(j - (stage_index - 1)), j))
+        for j in order:
+            if not spec.stages[j].is_solid:
+                borrowed.add((stage_index, spec.stages[j].tank.material.name))
+                return Material.from_tank_material(spec.stages[j].tank.material)
+        fallback = getattr(spec, "default_structure_material", None)
+        borrowed.add((stage_index, fallback.name if fallback else "aluminium"))
+        return Material.from_tank_material(fallback) if fallback else Material(
+            "aluminium (book Example 2)", 69.0e9, DEFAULT_POISSON, 2840.0, 250.0e6)
+
+    skipped, casings, internal = [], [], []
     for seg in sorted(geom.segments, key=lambda s: -s.z0):
         R = 0.25 * (seg.d_bot + seg.d_top) if seg.d_top > 0 else 0.5 * seg.d_bot
         if R <= 0:
@@ -405,22 +428,38 @@ def analyse(res, cases: dict, material: "Material | None" = None, fs: float = 1.
         if seg.stage < 1:
             skipped.append(seg.name)                          # the fairing: see the note below
             continue
+        if seg.kind == "casing" or (_tank_of(seg) is not None and spec.stages[seg.stage - 1].is_solid):
+            casings.append(seg.name)                          # a solid motor's casing: see the note below
+            continue
+        mat = mat_for(seg.stage)
         r_small = 0.5 * min(seg.d_bot, seg.d_top) if seg.d_top > 0 else 0.5 * seg.d_bot
         tank = _tank_of(seg)
         pressurised = tank is not None
         if tank is not None:
             t_installed = tank.t_wall
         elif seg.stage >= 1:
-            t_installed = spec.stages[seg.stage - 1].tank.wall_t_assumed_m["fuel"]
+            st_ = spec.stages[seg.stage - 1]
+            t_installed = st_.motor.wall_t_assumed_m if st_.is_solid else st_.tank.wall_t_assumed_m["fuel"]
         else:
             t_installed = mat.t_min_m
         p_op = 0.0
-        if pressurised and seg.stage >= 1:
+        if pressurised and seg.stage >= 1 and not spec.stages[seg.stage - 1].is_solid:
             p_op = spec.stages[seg.stage - 1].tank.pressure_Pa.get(tank.role, 0.0)
         rho_liq = _propellant_density(spec, seg)
+        # a tank narrower than its stage sits inside the stage's outer structure, which carries the vehicle's
+        # axial force and bending; the tank itself carries its own pressure. Loading a 0.35 m tank with the whole
+        # vehicle's thrust asked Vega's upper stage for 14 mm walls.
+        inner = pressurised and R < 0.5 * spec.stages[seg.stage - 1].diameter_m - 1e-3
+        if inner:
+            internal.append(seg.name)
 
         case_loads = []
         for key_c, c in live:
+            # a flight case after this stage has separated does not load it: Falcon 9's maximum-acceleration
+            # case is at stage-2 burnout, and applying it to stage 1 filled its empty tanks with 4.5 g of head
+            burning = c.state.get("stage_burning")
+            if c.condition != "ground_wind" and burning is not None and seg.stage < burning:
+                continue
             P, V, M = _station_envelope(c.stations, seg.z0, seg.z1)
             n_x = c.state.get("n_x", 1.0)
             on_ground = c.condition == "ground_wind"
@@ -429,9 +468,13 @@ def analyse(res, cases: dict, material: "Material | None" = None, fs: float = 1.
             fill = 1.0 if on_ground else _flight_fill_fraction(res, c, seg)
             depth = _liquid_depth_m(seg, seg.z0, fill) if pressurised else 0.0
             p_h = hydrostatic_pressure_Pa(rho_liq, n_x, depth) if pressurised else 0.0
+            if inner:
+                P = M = V = 0.0
             case_loads.append(dict(case=c.name, P_N=P, M_Nm=M, V_N=V, p_Pa=p, p_hydro_Pa=p_h, n_x=n_x))
 
-        sh = analyse_shell(seg.name, seg.kind, seg.stage, R, seg.length, r_small, geo.segment_area(seg),
+        # book p.654: a skirt's area is its side wall, a tank's is the cylinder plus its two domes
+        area = getattr(tank, "area_ext", 0.0) or geo.segment_area(seg) if tank is not None else geo.segment_area(seg)
+        sh = analyse_shell(seg.name, seg.kind, seg.stage, R, seg.length, r_small, area,
                            t_installed, mat, pressurised, case_loads, fs)
         sh.mass_model_kg = ((component_masses or {}).get(seg.name)
                             if component_masses else _model_mass_kg(res, seg)) or 0.0
@@ -440,6 +483,17 @@ def analyse(res, cases: dict, material: "Material | None" = None, fs: float = 1.
     paired = [s for s in shells if s.mass_model_kg > 0]
     sized = sum(s.mass_sized_kg for s in paired)
     modelled = sum(s.mass_model_kg for s in paired)
+    if casings:
+        notes.append("Solid-motor casings are not analysed here: a casing is a pressure vessel at the motor's chamber "
+                     "pressure, in steel or composite, and the design carries no allowables for either - its mass "
+                     "comes from the book's casing relationship (Eq. 8:18). Skipped: " + ", ".join(casings) + ".")
+    if internal:
+        notes.append("Tanks narrower than their stage (" + ", ".join(internal) + ") are checked for their own "
+                     "pressure only: the stage's outer structure carries the vehicle's axial force and bending past "
+                     "them, and that structure is not modelled here.")
+    for stage_index, name in sorted(borrowed):
+        notes.append(f"Stage {stage_index} is solid and has no tank material, so its skirts and interstage are "
+                     f"checked as {name} (ASSUMED).")
     if skipped:
         notes.append("The payload fairing is not analysed here: it is sized by an areal-mass relationship "
                      "(book Table 8.8) and is normally a composite sandwich, whose buckling allowables "
@@ -454,6 +508,7 @@ def analyse(res, cases: dict, material: "Material | None" = None, fs: float = 1.
                  "a conceptual tool should not report a margin that depends on where exactly inside a 17 m tank "
                  "the worst load happens to fall.")
     gauge = [s.name for s in shells if s.min_gauge_applied]
+    mat = shells[0].material if shells else (material or mat_for(1) if spec.stages else None)
     if gauge:
         notes.append(f"{len(gauge)} of {len(shells)} shells come out below the {mat.t_min_m*1e3:.2f} mm minimum "
                      f"gauge of Table 10.2 and are set to it. On those pieces the loads do not size the "
@@ -476,7 +531,11 @@ def analyse(res, cases: dict, material: "Material | None" = None, fs: float = 1.
                      f"fitted to real vehicles, and real vehicles are not monocoque: the gap is the mass that "
                      f"rings, stringers, waffle and isogrid buy back. It is NOT a correction to apply to the "
                      f"design - neither number is re-sized into the vehicle.")
-    return dict(shells=shells, material=mat, factor_of_safety=fs,
+    mats = []
+    for s in shells:
+        if s.material.name not in [m.name for m in mats]:
+            mats.append(s.material)
+    return dict(shells=shells, material=mat, materials=mats, factor_of_safety=fs,
                 mass_sized_kg=sized, mass_model_kg=modelled,
                 mass_ratio=(sized / modelled) if modelled else None,
                 mass_delta_kg=(sized - modelled) if modelled else None, notes=notes,

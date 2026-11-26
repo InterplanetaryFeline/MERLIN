@@ -366,6 +366,7 @@ def _stage_json(s):
 
 
 def result_json(res, token):
+    from . import mass_properties as _mp
     g = res.geometry
     return {
         "token": token,
@@ -396,7 +397,8 @@ def result_json(res, token):
                     "field": getattr(i, "field", None) or _infer_field(i.code, i.message),
                     "options": getattr(i, "options", None) or None} for i in res.issues],
         "ledger": [{"stage": i.stage, "group": i.group, "name": i.name, "mass_kg": i.mass_kg, "z_m": i.z_m,
-                    "kind": i.kind, "shape": i.shape, "source": i.source} for i in res.ledger],
+                    "kind": i.kind, "shape": i.shape, "source": i.source, "liftoff": _mp.at_liftoff(res, i)}
+                   for i in res.ledger],
         "events": [{k: e[k] for k in ("event", "mass_kg", "z_cm_m", "z_cm_over_L", "J_roll", "J_pitch")}
                    for e in (res.mass_properties or {}).get("events", [])],
         "segments": [{"stage": s.stage, "kind": s.kind, "name": s.name, "z0": s.z0, "z1": s.z1,
@@ -422,7 +424,7 @@ def _figures(res, outdir):
     return figs
 
 
-def _run_studies(design_path, assump_path, spec, res, outdir, figs, want, n_mc=200, applied_opt=None):
+def _run_studies(design_path, assump_path, spec, res, outdir, figs, want, n_mc=200, applied_opt=None, overrides=None):
     """Run the optional analyses the browser asked for, reusing the CLI's own code path.
 
     The GUI must not grow a second way of computing anything, so this calls main._studies - the same function
@@ -432,7 +434,7 @@ def _run_studies(design_path, assump_path, spec, res, outdir, figs, want, n_mc=2
         return {}
     from .main import _studies
     return _studies(design_path, assump_path, spec, res, outdir, figs,
-                    _engine_studies(_expand_studies(want)), n_mc, False, applied_opt=applied_opt)
+                    _engine_studies(_expand_studies(want)), n_mc, False, applied_opt=applied_opt, overrides=overrides)
 
 
 def _study_payload(study, workdir) -> dict:
@@ -556,11 +558,37 @@ def _study_summary(extras):
     if sc and sc.get("shells"):
         t = max(sc["shells"], key=lambda sh: sh.t_required_m)
         out["structure"] = {"thickest_mm": 1e3 * t.t_required_m, "shell": t.name,
-                            "driver": t.governing_driver, "mass_ratio": sc.get("mass_ratio")}
+                            "driver": t.governing_driver, "mass_ratio": sc.get("mass_ratio"),
+                            "mass_sized_kg": sc.get("mass_sized_kg"), "mass_model_kg": sc.get("mass_model_kg"),
+                            "factor_of_safety": sc.get("factor_of_safety"), "notes": list(sc.get("notes") or []),
+                            "materials": [{"name": m.name, "E_GPa": m.E_Pa / 1e9, "allow_MPa": m.sigma_allow_Pa / 1e6,
+                                           "rho": m.rho_kg_m3, "t_min_mm": 1e3 * m.t_min_m}
+                                          for m in sc.get("materials") or [sc["material"]]],
+                            "shells": [{"name": sh.name, "stage": sh.stage, "R_m": sh.R_m, "L_m": sh.L_m,
+                                        "material": sh.material.name, "pressurised": sh.pressurised,
+                                        "t_installed_mm": 1e3 * sh.t_installed_m, "t_required_mm": 1e3 * sh.t_required_m,
+                                        "driver": sh.governing_driver, "case": sh.governing_case,
+                                        "t_axial_mm": 1e3 * c.t_axial_m, "t_hoop_mm": 1e3 * c.t_hoop_m,
+                                        "t_buckling_mm": 1e3 * c.t_buckling_m, "margin": sh.margin,
+                                        "mass_sized_kg": sh.mass_sized_kg, "mass_model_kg": sh.mass_model_kg}
+                                       for sh in sc["shells"]
+                                       for c in [max(sh.cases, key=lambda x: x.t_required_m)] if sh.cases]}
     pe = extras.get("payload_env")
     if pe is not None and getattr(pe, "rows", None):
+        from .payload_env import ARIANE5_QSL, ATLAS5_QSL, ARIANE6_REFERENCE, TYPICAL_AXIAL_G, TYPICAL_LATERAL_G
+        f = {k: v for k, v in (pe.flight or {}).items() if not isinstance(v, list)}
         out["payload_env"] = {"axial_g": pe.design_axial_g, "lateral_g": pe.design_lateral_g,
-                              "event": pe.governing_axial_event}
+                              "event": pe.governing_axial_event, "lateral_event": pe.governing_lateral_event,
+                              "payload_kg": pe.payload_mass_kg,
+                              "typical": {"axial": TYPICAL_AXIAL_G, "lateral": TYPICAL_LATERAL_G},
+                              "within_typical": {k: pe.within_typical.get(k) for k in ("axial", "lateral")},
+                              "rows": [{"event": r.event, "t_s": r.t_s, "axial_static_g": r.axial_static_g,
+                                        "axial_dynamic_g": r.axial_dynamic_g, "axial_g": r.axial_total_g,
+                                        "lateral_static_g": r.lateral_static_g,
+                                        "lateral_dynamic_g": r.lateral_dynamic_g, "lateral_g": r.lateral_total_g}
+                                       for r in pe.rows],
+                              "flight": f, "ariane5": ARIANE5_QSL, "atlas5": ATLAS5_QSL,
+                              "reference": ARIANE6_REFERENCE}
     co = extras.get("cost")
     if co is not None:
         from . import cost as _cost
@@ -572,8 +600,32 @@ def _study_summary(extras):
                           "trim_note": _trim_note(w.trim_deg)}
     unc = extras.get("uncertainty")
     if unc:
-        out["uncertainty"] = {k: unc.get(k) for k in ("p05_glom_kg", "p50_glom_kg", "p95_glom_kg", "n")
-                              if k in unc}
+        # the analysis names them p05/p50/p95; asking for p05_glom_kg found nothing, and the tab had only its chart
+        out["uncertainty"] = {k: v for k, v in dict(
+            nominal_glom_kg=unc.get("nominal_glom_kg"), p05_glom_kg=unc.get("p05"), p50_glom_kg=unc.get("p50"),
+            p95_glom_kg=unc.get("p95"), n=unc.get("n_converged"), n_failed=unc.get("n_failed")).items()
+            if v is not None}
+    bal = extras.get("ballistics")
+    if bal:
+        keys = ("stage", "propellant", "grain", "n", "Kn_min", "Kn_max", "Kn_start", "design_thrust_N", "design_burn_time_s",
+                "thrust_initial_N", "thrust_max_N", "thrust_peak_t_s", "thrust_web_burnout_N", "thrust_mean_action_N",
+                "pc_design_Pa", "pc_max_Pa", "pc_min_Pa", "web_burnout_t_s", "action_time_s", "action_fraction",
+                "tail_fraction", "total_impulse_Ns", "mass_burned_kg", "progressive", "a_calibrated", "A_t_m2")
+        out["ballistics"] = {"stages": [{k: p.get(k) for k in keys} for p in bal if p.get("ok")],
+                             "skipped": [{"stage": p.get("stage"), "reason": p.get("reason")}
+                                         for p in bal if not p.get("ok")]}
+    stg = extras.get("staging")
+    if stg:
+        ana, num = stg.get("analytical") or {}, stg.get("numerical") or {}
+        out["staging"] = {"analytical_fractions": ana.get("fractions"), "analytical_glom_kg": stg.get("analytical_glom_kg"),
+                          "analytical_mass_ratios": ana.get("mass_ratios"), "c_eff_mps": ana.get("c_eff_mps"),
+                          "sigma": ana.get("sigma"),
+                          "numerical_fractions": num.get("fractions"), "numerical_glom_kg": num.get("glom_kg"),
+                          "baseline_glom_kg": num.get("baseline_glom_kg"), "objective": num.get("objective"),
+                          "improvement_rel": num.get("improvement_rel"), "evaluations": num.get("evaluations"),
+                          "samples": num.get("samples"), "starts": len(num.get("starts") or []),
+                          "spread_rel": num.get("spread_rel"), "note": num.get("note"),
+                          "active_constraints": num.get("active_constraints") or []}
     ao = extras.get("ascent_optimum")
     if ao:
         best = ao.get("best") or {}
@@ -583,6 +635,26 @@ def _study_summary(extras):
             vertical_rise_s=best.get("vertical_rise_s"), stopped_by=(ao.get("binding") or {}).get("detail"),
             binding=ao.get("binding")).items() if v is not None}
     return out
+
+
+def _sized_spec(design_path, overrides, assump_path=None):
+    """The design as the Size button sizes it: loaded with the overrides, and with the optimised delta-v split in
+    place when the design asks for one. A route that loads the file without the second step describes another
+    vehicle from the one the other tabs show."""
+    from .optimization import apply_optimum
+    return apply_optimum(load_design(design_path, assump_path or DEFAULT_ASSUMPTIONS, overrides or None))[0]
+
+
+def _baseline(b):
+    """The vehicle a route about "this design" works on: the stored result of the last Size, when the page sends its
+    token, so every tab describes the one vehicle on the Summary; otherwise the design sized as the Size button
+    sizes it. Returns (design path, overrides, result, analyses that ran with it)."""
+    st = _STATE.get(b.get("token") or "")
+    if st is not None:
+        return st["design"], st["overrides"], st["res"], st.get("extras") or {}
+    p = _safe_design_path(b.get("path") or "config/default_design.yaml")
+    ov = b.get("overrides") or {}
+    return p, ov, size_vehicle(_sized_spec(p, ov)), {}
 
 
 def run_sizing(design_path, assump_path, overrides, workdir, token, studies=(), n_mc=200):
@@ -597,7 +669,7 @@ def run_sizing(design_path, assump_path, overrides, workdir, token, studies=(), 
         res = size_vehicle(spec)
         figs = _figures(res, outdir)
         extras = _run_studies(design_path, assump_path, spec, res, outdir, figs, studies, n_mc,
-                              applied_opt=(opt_note or {}).get("result"))
+                              applied_opt=(opt_note or {}).get("result"), overrides=overrides)
         _STATE[token] = {"res": res, "figs": figs, "design": design_path, "assump": assump_path,
                          "overrides": dict(overrides or {}), "dir": outdir, "extras": extras}
         # keep the last few runs only, so a long session does not grow without bound
@@ -926,6 +998,10 @@ class Handler(BaseHTTPRequestHandler):
             if u.path in ("/", "/index.html"):
                 with open(os.path.join(STATIC, "index.html"), "rb") as f:
                     return self._send(200, f.read(), "text/html; charset=utf-8")
+            if u.path in ("/favicon.png", "/favicon.ico"):          # the rocket in the wizard's hat
+                name = "favicon.png" if u.path.endswith(".png") else "merlin.ico"
+                with open(os.path.join(STATIC, name), "rb") as f:
+                    return self._send(200, f.read(), "image/png" if name.endswith(".png") else "image/x-icon")
             if u.path == "/api/designs":
                 return self._send(200, {"designs": list_designs(), "version": __version__,
                                         "assumptions": os.path.relpath(DEFAULT_ASSUMPTIONS, ROOT),
@@ -990,6 +1066,10 @@ class Handler(BaseHTTPRequestHandler):
                 except Exception as ex:                      # noqa: BLE001
                     out["solid_error"] = f"{type(ex).__name__}: {ex}"
                 return self._send(200, out)
+            if u.path == "/api/wind_profiles":
+                from . import wind as _wind
+                return self._send(200, {"profiles": [{"value": v, "label": lab, "kind": k}
+                                                     for v, lab, k in _wind.shipped_profiles()]})
             if u.path == "/api/cad_formats":
                 from . import cad_export, cad_kernel
                 st = cad_kernel.status()
@@ -1085,6 +1165,45 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(400, {"error": str(ex), "cost_field": getattr(ex, "field", None)})
                 st["extras"]["cost"] = est
                 return self._send(200, _cost.as_json(est))
+            if u.path == "/api/wind":
+                # The wind settings on the Loads tab. The wind changes the air loads and what is built on them -
+                # the shells, the payload's lateral load - and nothing else: the vehicle is not sized again and
+                # the ascent, which flies in still air, is not flown again.
+                st = self._state({"token": [b.get("token") or ""]})
+                import copy as _copy
+                wind = {k: v for k, v in (b.get("wind") or {}).items() if k in ("profile", "kind", "gust_increment_mps")}
+                spec = _copy.copy(st["res"].spec)
+                spec.mission = dict(spec.mission, wind=dict(spec.mission.get("wind") or {}, **wind))
+                pad = b.get("pad_height_m")
+                if pad is not None:                  # read by the ground-wind case only, so it lives here too
+                    try:
+                        pad = float(pad)
+                    except (TypeError, ValueError):
+                        return self._send(400, {"error": "the pad height must be a number of metres"})
+                    if not 0.0 <= pad <= 500.0:
+                        return self._send(400, {"error": "the pad height must be between 0 and 500 m"})
+                    spec.mission["pad_height_m"] = pad
+                from .main import _studies
+                want = {"loads", "structure", "payload_env"} & set(st["extras"])
+                keep = {k: v for k, v in st["extras"].items() if k not in want and k != "wind_profiles"}
+                figs = dict(st["figs"])
+                with _LOCK:
+                    import io as _io, contextlib as _cl
+                    err = _io.StringIO()
+                    with _cl.redirect_stderr(err):
+                        extras = _studies(st["design"], st["assump"], spec, st["res"], st["dir"], figs, want, 0, False,
+                                          prior=keep)
+                if "loads" not in extras:
+                    return self._send(400, {"error": "the loads could not be computed with this wind: "
+                                                     + (err.getvalue().strip().splitlines() or ["no reason given"])[-1]})
+                st["extras"], st["figs"] = extras, figs
+                for k, v in wind.items():
+                    st["overrides"]["mission.wind." + k] = v
+                if pad is not None:
+                    st["overrides"]["mission.pad_height_m"] = pad
+                return self._send(200, {"study_summary": _study_summary(extras),
+                                        "figures": sorted(k for k, v in figs.items() if v and os.path.exists(v)),
+                                        "wind": dict(spec.mission["wind"])})
             if u.path == "/api/save":
                 base = _safe_design_path(b.get("path") or "config/default_design.yaml")
                 try:
@@ -1183,13 +1302,21 @@ class Handler(BaseHTTPRequestHandler):
                 # default and reach the workbook, but had no way in from the browser at all - so the
                 # question "what is this design most sensitive to" could only be asked on a terminal.
                 from . import sensitivity as _sens
-                p = _safe_design_path(b.get("path") or "config/default_design.yaml")
+                # The baseline is the vehicle the other tabs show: the stored result of the last sizing, with
+                # its overrides and any optimised split. Sizing it again from the file here gave a different
+                # vehicle whenever the split had been optimised.
+                st = _STATE.get(b.get("token") or "")
                 with _LOCK:
-                    spec = load_design(p, DEFAULT_ASSUMPTIONS, b.get("overrides") or None)
-                    base = size_vehicle(spec)
-                    rows = _sens.standard_studies(p, DEFAULT_ASSUMPTIONS, base)
-                    comp = _sens.configuration_comparison(p, DEFAULT_ASSUMPTIONS, base)
-                return self._send(200, {"baseline_glom_kg": base.glom_kg,
+                    if st is not None:
+                        p, ov, base, assump = st["design"], st["overrides"], st["res"], st["assump"]
+                    else:
+                        assump = DEFAULT_ASSUMPTIONS
+                        p = _safe_design_path(b.get("path") or "config/default_design.yaml")
+                        ov = b.get("overrides") or {}
+                        base = size_vehicle(_sized_spec(p, ov))
+                    rows = _sens.standard_studies(p, assump, base, ov)
+                    comp = _sens.configuration_comparison(p, assump, base, ov)
+                return self._send(200, {"baseline_glom_kg": base.glom_kg, "token": b.get("token") if st else None,
                                         "studies": rows, "configurations": comp})
             if u.path == "/api/families":
                 # Launch vehicle families (R37). A family is a folder with a family.yaml in it; the browser
@@ -1248,7 +1375,6 @@ class Handler(BaseHTTPRequestHandler):
                 # designs but not one design's own architecture variants, which is the trade a launcher
                 # family is actually built on - one core, several booster counts.
                 from . import architecture as _arch
-                p = _safe_design_path(b.get("path") or "config/default_design.yaml")
                 counts = b.get("counts")
                 if counts is not None:
                     try:
@@ -1260,7 +1386,8 @@ class Handler(BaseHTTPRequestHandler):
                         return self._send(400, {"error": "give one or more booster counts, none negative",
                                                 "field": "boosters.n_total"})
                 with _LOCK:
-                    spec = load_design(p, DEFAULT_ASSUMPTIONS, b.get("overrides") or None)
+                    p, _ov, base, _ex = _baseline(b)
+                    spec = base.spec
                     if b.get("size_core"):
                         rows = []
                         for n in (counts or [spec.boosters.n_total if spec.boosters else 1]):
@@ -1277,7 +1404,6 @@ class Handler(BaseHTTPRequestHandler):
                                 rows.append({"n_boosters": n, "flyable": False, "reason": str(ex)})
                         return self._send(200, {"mode": "size_core", "payload_kg": spec.payload_mass_kg,
                                                 "rows": rows})
-                    base = size_vehicle(spec)
                     try:
                         pv = _arch.pin(base)
                     except _arch.ArchitectureError as ex:
@@ -1349,9 +1475,9 @@ class Handler(BaseHTTPRequestHandler):
                 # Where the jettisoned hardware lands. The design has to be sized and flown first, because the
                 # separation states come out of the trajectory - there is no shortcut from the YAML to a map.
                 from . import hazard as _hz, debris as _dbr, trajectory as _tj
-                p = _safe_design_path(b.get("path") or "config/default_design.yaml")
                 with _LOCK:
-                    spec = load_design(p, DEFAULT_ASSUMPTIONS, b.get("overrides") or None)
+                    p, _ov, res, extras = _baseline(b)
+                    spec = res.spec
                     lat = spec.mission["site_latitude_deg"]
                     lon = spec.mission.get("site_longitude_deg")
                     if b.get("longitude_deg") is not None:
@@ -1369,9 +1495,9 @@ class Handler(BaseHTTPRequestHandler):
                         sep_gamma_deg=float(b.get("sep_gamma_deg", _dbr.Dispersion.sep_gamma_deg)),
                         cross_half_width_m=(None if b.get("cross_half_width_m") in (None, "")
                                             else float(b["cross_half_width_m"])))
-                    res = size_vehicle(spec)
                     from . import aerodynamics as _aero
-                    traj = _tj.fly_design(res, drag=_aero.model_from_config(
+                    # the ascent the Trajectory tab shows, when it was flown with this result
+                    traj = extras.get("trajectory") or _tj.fly_design(res, drag=_aero.model_from_config(
                         spec.mission.get("aerodynamics"), root=os.path.dirname(p)), **_tj.flight_options(spec))
                     if not traj.converged:
                         # An ascent that did not close has no trustworthy separation states, and inventing drop
@@ -1388,12 +1514,12 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, payload)
             if u.path == "/api/hazard_export":
                 from . import hazard as _hz, debris as _dbr, trajectory as _tj
-                p = _safe_design_path(b.get("path") or "config/default_design.yaml")
                 fmt = (b.get("format") or "kml").lower()
                 if fmt not in ("kml", "geojson"):
                     return self._send(400, {"error": "format must be kml or geojson"})
                 with _LOCK:
-                    spec = load_design(p, DEFAULT_ASSUMPTIONS, b.get("overrides") or None)
+                    p, _ov, res, extras = _baseline(b)
+                    spec = res.spec
                     lat = spec.mission["site_latitude_deg"]
                     lon = spec.mission.get("site_longitude_deg")
                     if b.get("longitude_deg") is not None:
@@ -1410,9 +1536,9 @@ class Handler(BaseHTTPRequestHandler):
                         sep_gamma_deg=float(b.get("sep_gamma_deg", _dbr.Dispersion.sep_gamma_deg)),
                         cross_half_width_m=(None if b.get("cross_half_width_m") in (None, "")
                                             else float(b["cross_half_width_m"])))
-                    res = size_vehicle(spec)
                     from . import aerodynamics as _aero
-                    traj = _tj.fly_design(res, drag=_aero.model_from_config(
+                    # the ascent the Trajectory tab shows, when it was flown with this result
+                    traj = extras.get("trajectory") or _tj.fly_design(res, drag=_aero.model_from_config(
                         spec.mission.get("aerodynamics"), root=os.path.dirname(p)), **_tj.flight_options(spec))
                     if not traj.converged:
                         return self._send(400, {"error": "the ascent did not converge, so there are no drop "

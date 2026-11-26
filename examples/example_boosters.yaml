@@ -9,7 +9,6 @@ mission:
   payload_envelope_diameter_m: {v: 2.7, u: m, d: "Payload static envelope diameter", s: "User requirement (assumed)", t: assumed}
   payload_envelope_length_m: {v: 3.0, u: m, d: "Payload static envelope cylindrical length", s: "User requirement (assumed)", t: assumed}
   delta_v_override_mps: {v: null, u: m/s, d: "If non-null, replaces the whole budget total (testing / design studies only)", s: "User override", t: user}
-  report_apogee_maneuver: {v: false, u: "-", d: "Report GTO->GEO apogee maneuver as informational line", s: "Option", t: user}
   orbit:
     type: {v: LEO, u: "-", d: "LEO | SSO | GTO | GEO_VIA_GTO | GEO_DIRECT | CUSTOM", s: "User requirement", t: user}
     perigee_altitude_km: {v: 400.0, u: km, d: "Injection (perigee) altitude", s: "User requirement", t: user}
